@@ -1,5 +1,5 @@
 import { logger, prisma } from '@renews/shared';
-import { stubPipeline } from './pipeline.js';
+import { runResearch } from './pipeline/research.js';
 
 const HEARTBEAT_MS = 30_000;
 
@@ -37,12 +37,16 @@ async function execute(runId: string): Promise<void> {
   }, HEARTBEAT_MS);
 
   try {
-    await stubPipeline(runId);
-    await prisma.run.update({
+    const run = await prisma.run.findUnique({
       where: { id: runId },
-      data: { status: 'success', finishedAt: new Date(), heartbeatAt: null },
+      include: { job: true },
     });
-    logger.info(`poll: run ${runId} success`);
+    if (!run) throw new Error(`run ${runId} not found`);
+
+    await runResearch(runId, run.job);
+    // Plan 4 stops after Stage 1. Status stays `running`; plan 5 will chain
+    // Stage 2 here and flip to success. No finishedAt yet.
+    logger.info(`poll: run ${runId} stage 1 complete (status stays running until plan 5)`);
   } catch (err) {
     const msg = err instanceof Error ? err.stack || err.message : String(err);
     logger.error(`poll: run ${runId} failed:`, msg);

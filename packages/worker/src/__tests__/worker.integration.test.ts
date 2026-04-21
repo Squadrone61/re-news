@@ -1,8 +1,40 @@
 import { execSync } from 'node:child_process';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Mock the Claude Agent SDK — integration tests must not make real API calls.
+// Each test sets `sdkBehavior` to control what the mocked `query()` does: it
+// emits the given SDK messages via the async iterator and optionally writes a
+// research.json into the run's cwd before returning.
+type SdkBehavior = {
+  messages?: unknown[];
+  researchJson?: unknown | null; // null → write nothing
+};
+let sdkBehavior: SdkBehavior = {};
+
+vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
+  query: ({ options }: { options: { cwd: string } }) => {
+    const cwd = options.cwd;
+    async function* gen() {
+      for (const m of sdkBehavior.messages ?? []) yield m;
+      if (sdkBehavior.researchJson !== null && sdkBehavior.researchJson !== undefined) {
+        await fs.mkdir(cwd, { recursive: true });
+        await fs.writeFile(
+          path.join(cwd, 'research.json'),
+          JSON.stringify(sdkBehavior.researchJson),
+          'utf8',
+        );
+      }
+    }
+    return gen();
+  },
+}));
 
 let pg: StartedPostgreSqlContainer;
+let runsDir: string;
 let prisma: typeof import('@renews/shared').prisma;
 let onFire: typeof import('../onFire.js').onFire;
 let tick: typeof import('../poll.js').tick;
@@ -17,6 +49,9 @@ beforeAll(async () => {
 
   const url = pg.getConnectionUri();
   process.env.DATABASE_URL = url;
+
+  runsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'renews-runs-'));
+  process.env.RUNS_DIR = runsDir;
 
   execSync('pnpm prisma migrate deploy', {
     stdio: 'inherit',
@@ -33,6 +68,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await prisma?.$disconnect();
   await pg?.stop();
+  if (runsDir) await fs.rm(runsDir, { recursive: true, force: true });
 });
 
 async function createJob(overrides: Partial<{ schedule: string; enabled: boolean }> = {}) {
@@ -62,6 +98,7 @@ beforeEach(async () => {
   await prisma.run.deleteMany();
   await prisma.job.deleteMany();
   await prisma.user.deleteMany();
+  sdkBehavior = {};
 });
 
 describe('onFire', () => {
@@ -83,31 +120,113 @@ describe('onFire', () => {
   });
 });
 
-describe('poll.tick', () => {
-  it('claims a queued run and drives it to success via stub pipeline', async () => {
+describe('poll.tick (runResearch)', () => {
+  it('runs Stage 1 and persists researchRaw; status stays running', async () => {
     const job = await createJob();
     const run = await prisma.run.create({ data: { jobId: job.id, status: 'queued' } });
+    sdkBehavior = {
+      messages: [
+        {
+          type: 'assistant',
+          message: {
+            content: [
+              { type: 'text', text: 'Fetching source…' },
+              { type: 'tool_use', name: 'WebFetch', input: { url: 'https://example.com' } },
+            ],
+          },
+        },
+        {
+          type: 'user',
+          message: { content: [{ type: 'tool_result', content: '<html>…</html>' }] },
+        },
+      ],
+      researchJson: {
+        fetched_at: '2026-04-21T00:00:00Z',
+        items: [
+          { source: 'https://example.com', title: 'A', url: 'https://example.com/a', content: 'x' },
+        ],
+        fetch_errors: [],
+      },
+    };
+
     await tick();
+
     const done = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
-    expect(done.status).toBe('success');
+    expect(done.status).toBe('running');
     expect(done.startedAt).toBeInstanceOf(Date);
-    expect(done.finishedAt).toBeInstanceOf(Date);
-    const logs = await prisma.runLog.findMany({
-      where: { runId: run.id, stage: 'sys' },
+    expect(done.finishedAt).toBeNull();
+    expect(done.researchRaw).toMatchObject({
+      items: [expect.objectContaining({ title: 'A' })],
+      fetch_errors: [],
     });
-    expect(logs.some((l) => l.message.includes('received run'))).toBe(true);
+
+    const logs = await prisma.runLog.findMany({ where: { runId: run.id } });
+    const stages = new Set(logs.map((l) => l.stage));
+    expect(stages.has('research')).toBe(true);
+    expect(
+      logs.some(
+        (l) => l.stage === 'sys' && /research_done: 1 items, 0 fetch_errors/.test(l.message),
+      ),
+    ).toBe(true);
+    expect(logs.some((l) => l.stage === 'research' && /^tool: WebFetch\(/.test(l.message))).toBe(
+      true,
+    );
+    expect(logs.some((l) => l.stage === 'research' && /^result: /.test(l.message))).toBe(true);
+  });
+
+  it('fails the run when research.json is missing', async () => {
+    const job = await createJob();
+    const run = await prisma.run.create({ data: { jobId: job.id, status: 'queued' } });
+    sdkBehavior = { messages: [], researchJson: null };
+
+    await tick();
+
+    const done = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
+    expect(done.status).toBe('failed');
+    expect(done.error).toBe('research.json missing');
+    expect(done.finishedAt).toBeInstanceOf(Date);
+  });
+
+  it('truncates items > 25 and content > 800 chars', async () => {
+    const job = await createJob();
+    const run = await prisma.run.create({ data: { jobId: job.id, status: 'queued' } });
+    const longContent = 'x'.repeat(1200);
+    sdkBehavior = {
+      messages: [],
+      researchJson: {
+        items: Array.from({ length: 40 }, (_, i) => ({
+          source: 's',
+          title: `t${i}`,
+          url: `u${i}`,
+          content: longContent,
+        })),
+        fetch_errors: [],
+      },
+    };
+
+    await tick();
+
+    const done = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
+    const raw = done.researchRaw as { items: Array<{ content: string }> };
+    expect(raw.items).toHaveLength(25);
+    expect(raw.items[0]!.content.length).toBe(800);
   });
 
   it('does not double-claim when ticks race', async () => {
     const job = await createJob();
     const run = await prisma.run.create({ data: { jobId: job.id, status: 'queued' } });
+    sdkBehavior = {
+      messages: [],
+      researchJson: { items: [], fetch_errors: [] },
+    };
+
     await Promise.all([tick(), tick()]);
     const final = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
-    expect(final.status).toBe('success');
+    expect(final.status).toBe('running');
     const sysLogs = await prisma.runLog.findMany({
-      where: { runId: run.id, stage: 'sys', message: { contains: 'received run' } },
+      where: { runId: run.id, stage: 'sys' },
     });
-    expect(sysLogs).toHaveLength(1);
+    expect(sysLogs.filter((l) => l.message.startsWith('research_done:'))).toHaveLength(1);
   });
 });
 
