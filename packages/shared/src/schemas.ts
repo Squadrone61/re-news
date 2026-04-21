@@ -27,7 +27,24 @@ export const JobInput = z.object({
 });
 export type JobInput = z.infer<typeof JobInput>;
 
-export const JobUpdate = JobInput.partial();
+// Partial update: every field optional, no defaults — missing key = "don't touch".
+// Do NOT reuse `JobInput.partial()`: zod's `.default([])` etc. still fire on missing
+// keys and would silently wipe server-side data. Spell each field out explicitly.
+export const JobUpdate = z.object({
+  name: z.string().min(1).max(200).optional(),
+  enabled: z.boolean().optional(),
+  schedule: z.string().min(1).max(100).optional(),
+  sources: z.array(SourceInput).optional(),
+  topic: z.string().min(1).max(500).optional(),
+  basePrompt: z.string().min(1).max(10_000).optional(),
+  recipientEmail: z.string().email().optional(),
+  outputFormat: OutputFormat.optional(),
+  maxItems: z.number().int().min(1).max(25).optional(),
+  modelResearch: z.string().optional(),
+  modelSummary: z.string().optional(),
+  monthlyBudget: z.number().int().min(1).max(100_000).optional(),
+  minIntervalMinutes: z.number().int().min(0).max(100_000).nullable().optional(),
+});
 export type JobUpdate = z.infer<typeof JobUpdate>;
 
 export const SetupInput = z.object({
