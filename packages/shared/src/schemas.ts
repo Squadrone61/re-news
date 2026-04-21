@@ -71,6 +71,9 @@ export const StageTwoSchema = z.object({
       headline: z.string(),
       body: z.string(),
       source_url: z.string().url(),
+      // Optional section label the render layer groups by when any item has one.
+      // The user's base prompt can drive category choice (e.g. "Politics", "Sports").
+      category: z.string().max(60).optional(),
     }),
   ),
   empty_reason: z.string().optional(),

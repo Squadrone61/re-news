@@ -21,13 +21,45 @@ export function renderMarkdown(parsed: StageTwo): string {
     parts.push(parsed.intro.trim());
   }
   parts.push('---');
+
+  const hasCategories = parsed.items.some((it) => (it.category ?? '').trim().length > 0);
+
+  if (!hasCategories) {
+    for (const it of parsed.items) {
+      parts.push(`### ${it.headline}`);
+      parts.push('');
+      parts.push(it.body);
+      parts.push('');
+      parts.push(`[Source](${it.source_url})`);
+      parts.push('');
+    }
+    return parts.join('\n');
+  }
+
+  // Group items by category in first-appearance order. Items without a
+  // category are grouped under "Other" so the model can still mix styles.
+  const order: string[] = [];
+  const buckets = new Map<string, StageTwo['items']>();
   for (const it of parsed.items) {
-    parts.push(`### ${it.headline}`);
+    const label = (it.category ?? '').trim() || 'Other';
+    if (!buckets.has(label)) {
+      buckets.set(label, []);
+      order.push(label);
+    }
+    buckets.get(label)!.push(it);
+  }
+
+  for (const label of order) {
+    parts.push(`## ${label}`);
     parts.push('');
-    parts.push(it.body);
-    parts.push('');
-    parts.push(`[Source](${it.source_url})`);
-    parts.push('');
+    for (const it of buckets.get(label)!) {
+      parts.push(`### ${it.headline}`);
+      parts.push('');
+      parts.push(it.body);
+      parts.push('');
+      parts.push(`[Source](${it.source_url})`);
+      parts.push('');
+    }
   }
   return parts.join('\n');
 }
