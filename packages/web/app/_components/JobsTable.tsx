@@ -3,6 +3,7 @@ import cronstrue from 'cronstrue';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useToast } from './Toaster';
 
 type JobRow = {
   id: string;
@@ -34,24 +35,54 @@ function relTime(iso: string) {
 
 export function JobsTable({ jobs, showOwner }: { jobs: JobRow[]; showOwner: boolean }) {
   const router = useRouter();
+  const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
 
   async function toggle(job: JobRow) {
     setBusy(job.id);
-    await fetch(`/api/jobs/${job.id}`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ enabled: !job.enabled }),
-    });
-    setBusy(null);
-    router.refresh();
+    try {
+      const res = await fetch(`/api/jobs/${job.id}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ enabled: !job.enabled }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(`Could not change job: ${body.error ?? res.statusText}`);
+      } else {
+        toast.success(job.enabled ? 'Job disabled' : 'Job enabled');
+      }
+    } catch (e) {
+      toast.error(`Could not change job: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(null);
+      router.refresh();
+    }
   }
 
   async function runNow(job: JobRow) {
     setBusy(job.id);
-    await fetch(`/api/jobs/${job.id}/run`, { method: 'POST' });
-    setBusy(null);
-    router.refresh();
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/run`, { method: 'POST' });
+      const body = (await res.json().catch(() => ({}))) as {
+        runId?: string;
+        status?: string;
+        reason?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        toast.error(`Could not enqueue: ${body.error ?? res.statusText}`);
+      } else if (body.status === 'deferred') {
+        toast.info(`Run deferred: ${body.reason ?? 'see run detail'}`);
+      } else {
+        toast.success('Run queued');
+      }
+    } catch (e) {
+      toast.error(`Could not enqueue: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(null);
+      router.refresh();
+    }
   }
 
   if (jobs.length === 0) {
