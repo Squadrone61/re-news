@@ -4,7 +4,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { Job } from '@prisma/client';
 import { prisma, streamLogToDb } from '@renews/shared';
 import { buildResearchPrompt } from '../prompts/research.js';
-import { RateLimitError, detectRateLimit } from './errors.js';
+import { CancelledError, RateLimitError, detectRateLimit } from './errors.js';
 import { type UsageTotals, addUsage, emptyUsage, extractUsage } from './usage.js';
 
 const RUNS_ROOT = process.env.RUNS_DIR ?? '/app/data/runs';
@@ -29,6 +29,18 @@ export async function runResearch(
   const cwd = path.join(RUNS_ROOT, runId);
   await fs.mkdir(cwd, { recursive: true });
 
+  const controller = new AbortController();
+  const cancelWatch = setInterval(() => {
+    prisma.run
+      .findUnique({ where: { id: runId }, select: { cancelRequested: true } })
+      .then((r) => {
+        if (r?.cancelRequested) controller.abort();
+      })
+      .catch(() => {
+        /* transient DB read failure — next tick will retry */
+      });
+  }, 1000);
+
   try {
     for await (const msg of query({
       prompt: buildResearchPrompt(job),
@@ -38,16 +50,26 @@ export async function runResearch(
         cwd,
         model: job.modelResearch,
         maxTurns: 40,
+        abortController: controller,
       },
     })) {
       addUsage(usage, extractUsage(msg));
       await streamLogToDb(runId, 'research', msg);
     }
   } catch (e) {
+    if (controller.signal.aborted) throw new CancelledError();
     const rl = detectRateLimit(e);
     if (rl) throw rl;
     throw e;
+  } finally {
+    clearInterval(cancelWatch);
   }
+
+  const cancelledAfterSdk = await prisma.run.findUnique({
+    where: { id: runId },
+    select: { cancelRequested: true },
+  });
+  if (cancelledAfterSdk?.cancelRequested) throw new CancelledError();
 
   const researchPath = path.join(cwd, 'research.json');
   let raw: string;
