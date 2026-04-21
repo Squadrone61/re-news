@@ -2,7 +2,7 @@
 
 Self-hosted, family-scale newsletter agent. Runs on one Linux home server, alongside the user's other containers. Produces scheduled, AI-generated newsletters from user-defined sources and topics using the Claude Agent SDK (subscription auth, no API key). Multi-user app (3–4 family members); single shared Claude subscription under the hood. Configured and monitored via a web UI.
 
-> **This document is the product-level spec.** The 8 implementation plans in this directory (`01-skeleton.md` → `08-deploy-polish.md`) are the authoritative guide for what to build and in what order. Start with `plans/README.md`.
+> **This document is the product-level spec as frozen at v1.** All 8 implementation plans have shipped; their individual files have been removed. For current architecture + non-obvious constraints see `CLAUDE.md`; for the Decisions Log see `plans/README.md`. Use this file to understand *what* was built and *why* at the product level.
 
 ---
 
@@ -467,20 +467,20 @@ networks:
 
 ---
 
-## 12. Build Order
+## 12. Build Order (shipped)
 
-The 8 plans in this directory (see `plans/README.md`):
+v1 was built in 8 sequenced plans, all completed:
 
 1. **Skeleton** — monorepo, 3-service Compose, Prisma schema, healthchecks, `/healthz`, migrate override
-2. **Users + Jobs CRUD** — session auth from day 1, users table, full Jobs CRUD scoped per user, Run Now inserts queued run
-3. **Worker Loop** — embedded cron + 5s poll, heartbeat, stale recovery, stub pipeline
+2. **Users + Jobs CRUD** — iron-session auth, users table, full Jobs CRUD scoped per user, Run Now inserts queued run
+3. **Worker Loop** — embedded cron + 5s poll, heartbeat, stale recovery
 4. **Research Agent** — Stage 1 SDK call, `research.json`, streams logs
-5. **Summary + Render + Email** — Stage 2 + validation + render + Gmail SMTP + Settings page
+5. **Summary + Render + Email** — Stage 2 + zod validation + render + Gmail SMTP + Settings page
 6. **Run Detail UI** — SSE log tail, sandboxed preview, resend, re-run-Stage-2, re-run-full
-7. **Hardening** — rate-limit → `deferred`, retries, monthly budget, min interval, failure notices
-8. **Deploy + Polish** — GHA → GHCR → Watchtower, cron collision hints, token/cost, cleanup, backups
+7. **Hardening** — rate-limit → `deferred`, retries w/ backoff, monthly budget, min interval, failure notices
+8. **Deploy + Polish** — GHA → GHCR → Watchtower, cron collision hints, AccountInfo, token/cost capture, run-dir cleanup, nightly `pg_dump` backups
 
-Each plan has its own Acceptance Criteria and Verification block. Work sequentially.
+Individual plan files were removed after shipping. The Decisions Log in `plans/README.md` retains the non-obvious choices made during execution.
 
 ---
 
@@ -510,7 +510,7 @@ Each plan has its own Acceptance Criteria and Verification block. Work sequentia
 
 ## 14. Locked Decisions (previously "open questions")
 
-All open questions from the original draft have been decided. Change here first if revisiting; then sweep referencing plans and `plans/README.md`'s Decisions Log.
+All open questions from the original draft were decided before build. Change here first if revisiting for v1.1; then sweep `CLAUDE.md` and `plans/README.md`'s Decisions Log.
 
 - **DB**: Postgres 16 (not SQLite). JSONB, migrations, family-scale but room to grow.
 - **Web framework**: Next.js 14 App Router. All-TS monorepo; types shared via `packages/shared`.
@@ -520,6 +520,6 @@ All open questions from the original draft have been decided. Change here first 
 - **Playwright MCP**: deferred to v1.1. Worker skips `needs_browser` sources with a warning; v1.1 adds the MCP.
 - **Email provider**: Gmail SMTP via Nodemailer with an app password. Not Resend — we don't own a verified domain. Shared admin-owned sender; per-job `recipient_email`.
 - **Auth model**: Multi-user app (session cookies, per-user ownership) over a single shared Claude subscription (admin's, mounted into worker). No self-signup.
-- **Auth timing**: session auth ships in plan 2 — not retrofitted later.
+- **Auth timing**: session auth shipped with the first CRUD plan — not retrofitted later.
 - **Deploy**: `:latest` auto-deploys via existing Watchtower on push-to-`main`. Rollback via `:sha-<oldsha>` override.
 - **Dev/test env**: Linux home server only; no local Docker Desktop.
