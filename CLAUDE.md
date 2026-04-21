@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Status
 
-Plans 1–4 landed. The 3-service compose stack boots (`web`, `worker`, `db`), Prisma schema is migrated, session-based auth + full jobs CRUD ship against a per-user ownership model, and the worker embeds node-cron scheduling + a 5s queued-run poll with heartbeat + stale-run recovery. Stage 1 (research) now runs through the Claude Agent SDK with tools enabled: `runResearch` streams SDK messages (assistant text, tool_use, tool_result) into `run_logs`, reads `research.json` from the per-run cwd, applies defense-in-depth truncation (≤25 items, ≤800 chars each), and persists the parsed payload to `runs.researchRaw`. **Runs intentionally stay in `running` after Stage 1** — plan 5 will chain Stage 2 and flip to `success`. Next: plan 5 (summary + render + email).
+Plans 1–5 landed. The 3-service compose stack boots (`web`, `worker`, `db`), Prisma schema is migrated, session-based auth + full jobs CRUD ship against a per-user ownership model, and the worker embeds node-cron scheduling + a 5s queued-run poll with heartbeat + stale-run recovery. Stage 1 (research) runs through the Claude Agent SDK with tools enabled: `runResearch` streams SDK messages into `run_logs`, reads `research.json`, applies defense-in-depth truncation (≤25 items, ≤800 chars each), and persists the parsed payload to `runs.researchRaw`. **Stage 2 chains after Stage 1**: a cheap tool-less SDK call emits strict JSON validated by zod + `validateLengths` with one retry; the parsed object persists to `runs.stage2Json`, the job's `outputFormat` is rendered (markdown / `marked+juice` HTML / pretty JSON) into `runs.renderedOutput`, Gmail SMTP (Nodemailer, admin-configured) sends the newsletter, then status flips `running → success` with `finishedAt` + `job.lastRunAt` bumped. Admin-only `/settings` manages shared sender creds + default models; `GET /api/settings` masks the app password as `"***"`, `PUT` treats empty / `"***"` as "no change". Next: plan 6 (run detail UI).
 
 **The implementation plans in `plans/` are the authoritative source of truth** — start with `plans/README.md` (index + Decisions Log), then read the relevant plan file. `plans/spec.md` is the original product spec; it has been kept in sync with locked decisions but the 8 plan files are where actionable implementation detail lives.
 
-**Build order**: 8 sequenced plans in `plans/` (01-skeleton → 08-deploy-polish). Each plan has Goal, Dependencies, Scope, Tasks, Acceptance Criteria, and a Verification block with shell commands. Work them in order. Completed: 1, 2, 3, 4. Next: 5 (summary + render + email).
+**Build order**: 8 sequenced plans in `plans/` (01-skeleton → 08-deploy-polish). Each plan has Goal, Dependencies, Scope, Tasks, Acceptance Criteria, and a Verification block with shell commands. Work them in order. Completed: 1, 2, 3, 4, 5. Next: 6 (run detail UI).
 
 ## What We're Building
 
@@ -72,6 +72,22 @@ Monorepo layout under `packages/{web,worker,shared}` with Prisma schema at the r
 - `streamLogToDb` accepts either a raw string or an SDK message object. For SDK messages it emits one row per content block: `assistant` text → `info`, `tool_use` → `"tool: name(args)"` (args truncated to 200 chars), `tool_result` in a `user` message → `"result: ..."` (truncated to 200 chars), `is_error` flips level to `error`, `result` messages with `is_error: true` log the subtype + errors. `system`/partial-assistant/status messages are intentionally skipped — too noisy. Full research JSON is **never** logged (already in `runs.researchRaw`); only the `sys` summary `research_done: N items, M fetch_errors` goes through.
 - Lookback window for the research prompt is derived from the job's cron cadence via `lookbackFromSchedule` in `@renews/shared`: ≥7d → "last 7 days", ≥24h → "last 24 hours", ≥1h → "last 6 hours", else "recent".
 - `poll.execute` loads the run with `include: { job: true }` before calling `runResearch`. Don't refactor this to pass the job around earlier — the single DB read after claim is fine, and it guarantees the latest job state (e.g. if user edited `modelResearch` between enqueue and pickup).
+
+**Summary / render / email internals (plan 5).**
+- `summarize.ts` calls the SDK with `allowedTools: []`, `permissionMode: 'default'`, `maxTurns: 1`, `model: job.modelSummary`. It concatenates assistant text, runs `extractJson` (strips optional ```` ``` ```` / ```` ```json ```` fences, falls back to the outermost `{…}` substring), then `JSON.parse` → `StageTwoSchema.parse` → `validateLengths`. Any throw triggers a single retry with `buildRetryPrompt()`; second throw → `stage2 validation failed after retry: <reason>`.
+- `validateLengths` enforces `items.length ≤ job.maxItems`, `subject ≤ 70 chars`, and `body ≤ 50 words` per item. Tighter than the prompt's 45-word cap — gives the model headroom while still catching rogue output.
+- Persistence order in `poll.execute`: research → stage2Json → renderedOutput → email → status=success + finishedAt + job.lastRunAt. Rendered output is written **before** email, so a later email failure still leaves the artifact for plan 6's resend.
+- Email format dispatch: `outputFormat === 'html'` → `sendMail({ html: rendered, text: stripHtml(rendered) })`. `markdown` / `json` → `text` only. `juice(marked(md))` inlines the base CSS (Gmail strips `<style>` blocks).
+- Email failures (SMTP-level) rethrow as `"email send: <reason>"`; the outer `poll.execute` catch turns that into `status='failed'` with the error string.
+- `pipeline/email.ts` reads the singleton `Setting` row and throws `"email settings incomplete"` if any of `gmailUser`, `gmailAppPassword`, `senderName` are missing — prevents a silent "ok, message id=undefined" with unconfigured creds.
+
+**Settings API semantics (plan 5).**
+- `GET /api/settings` upserts the singleton row (so first GET creates it) and returns `gmailAppPassword: "***"` when set, `""` when unset. Admin-only (403 otherwise).
+- `PUT /api/settings` accepts partial input via `SettingsInput` (strict zod object). Empty strings for `gmailUser` / `senderName` write `null` (clearing is allowed); empty string, literal `"***"`, or `undefined` for `gmailAppPassword` means **no change** — only a new non-empty non-mask string writes it. This prevents accidental wipe on a GET → form-submit round-trip.
+- `@renews/shared/auth` is *not* needed here; the route uses `requireAdmin` from `packages/web/src/lib/session.ts` which only pulls argon2 transitively through the CRUD path, not this handler.
+
+**Job form defaults come from Settings.**
+- `/jobs/new` is a server component that reads the `Setting` row and passes `{ modelResearch, modelSummary }` defaults into `JobForm`. If Settings is absent, hardcoded fallbacks (`claude-sonnet-4-6` / `claude-haiku-4-5`) apply. Edit page passes `initial` so existing values win — only new-job defaults are driven by Settings.
 
 **Email delivery uses Gmail SMTP via Nodemailer** (shared admin-owned sender, not Resend).
 - Admin configures one Gmail account + app password in `/settings`. All users' newsletters send from that address; each job has its own `recipient_email`.

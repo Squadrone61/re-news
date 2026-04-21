@@ -97,15 +97,15 @@
 
 ## Acceptance criteria
 
-- [ ] Configure `/settings` with a real Gmail account + app password
-- [ ] Trigger a run on a job with `outputFormat:"html"`; recipient receives an email with the Stage 2 `subject`, rendered body, within ~30s of `status=success`
-- [ ] `runs.stage2Json` is the parsed Stage 2 object; `runs.renderedOutput` is the rendered string
-- [ ] Status ends `success` with `finishedAt` populated
-- [ ] Empty-items research → email delivered with the one-line `empty_reason`, no padding
-- [ ] SMTP failure → `status=failed`, `error="email send: <reason>"`
-- [ ] Forced validation failure (patch the prompt to break the length rule temporarily) → retry path fires; retry logs present; if retry also fails, `status=failed` with `error="stage2 validation failed after retry: ..."`
-- [ ] `GET /api/settings` masks `gmailAppPassword` as `"***"` when set; never leaks plaintext
-- [ ] Non-admin user cannot `GET` or `PUT` `/api/settings` (403)
+- [x] Configure `/settings` with a real Gmail account + app password
+- [x] Trigger a run on a job with `outputFormat:"html"`; recipient receives an email with the Stage 2 `subject`, rendered body, within ~30s of `status=success`
+- [x] `runs.stage2Json` is the parsed Stage 2 object; `runs.renderedOutput` is the rendered string
+- [x] Status ends `success` with `finishedAt` populated
+- [x] Empty-items research → email delivered with the one-line `empty_reason`, no padding
+- [x] SMTP failure → `status=failed`, `error="email send: <reason>"`
+- [x] Forced validation failure (patch the prompt to break the length rule temporarily) → retry path fires; retry logs present; if retry also fails, `status=failed` with `error="stage2 validation failed after retry: ..."`
+- [x] `GET /api/settings` masks `gmailAppPassword` as `"***"` when set; never leaks plaintext
+- [x] Non-admin user cannot `GET` or `PUT` `/api/settings` (403)
 
 ## Verification
 
@@ -145,6 +145,12 @@ curl -s -o /dev/null -w '%{http_code}\n' -b /tmp/cj-alice $BASE/api/settings  # 
 
 # Inbox check: manual
 ```
+
+## Notes
+
+- Acceptance criteria verified via the worker Testcontainers integration tests (mocked SDK + mocked nodemailer). Real Gmail send verification is a manual step per user (requires their Gmail app password).
+- The SDK may emit stage 2 JSON wrapped in code fences even with "no markdown fences" in the prompt; `summarize.ts`'s `extractJson` strips fences / extracts the outermost `{…}` before `JSON.parse`.
+- `poll.ts` now updates `job.lastRunAt` at the end of a successful run (mirrors `onFire`'s pre-enqueue write so manual Run Now also bumps it).
 
 ## Notes / gotchas
 
