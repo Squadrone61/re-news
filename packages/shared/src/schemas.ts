@@ -46,6 +46,43 @@ export const UserCreateInput = z.object({
 });
 export type UserCreateInput = z.infer<typeof UserCreateInput>;
 
+export const StageTwoSchema = z.object({
+  subject: z.string().max(70),
+  intro: z.string().max(200),
+  items: z.array(
+    z.object({
+      headline: z.string(),
+      body: z.string(),
+      source_url: z.string().url(),
+    }),
+  ),
+  empty_reason: z.string().optional(),
+});
+export type StageTwo = z.infer<typeof StageTwoSchema>;
+
+export function validateLengths(p: StageTwo, maxItems: number): void {
+  if (p.items.length > maxItems) {
+    throw new Error(`too many items (${p.items.length} > ${maxItems})`);
+  }
+  for (const it of p.items) {
+    const words = it.body.trim().split(/\s+/).filter(Boolean).length;
+    if (words > 50) throw new Error(`item body too long (${words} words)`);
+  }
+  if (p.subject.length > 70) throw new Error('subject too long');
+}
+
+export const SettingsInput = z
+  .object({
+    gmailUser: z.string().email().nullable().optional(),
+    gmailAppPassword: z.string().optional(),
+    senderName: z.string().min(1).max(200).nullable().optional(),
+    defaultModelResearch: z.string().min(1).max(100).optional(),
+    defaultModelSummary: z.string().min(1).max(100).optional(),
+    workerConcurrency: z.number().int().min(1).max(10).optional(),
+  })
+  .strict();
+export type SettingsInput = z.infer<typeof SettingsInput>;
+
 export const UserUpdateInput = z
   .object({
     email: z.string().email().optional(),

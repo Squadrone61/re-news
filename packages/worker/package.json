@@ -12,11 +12,16 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.77",
     "@renews/shared": "workspace:*",
-    "node-cron": "^4.2.1"
+    "juice": "^11.1.1",
+    "marked": "^18.0.2",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^6",
+    "zod": "^4"
   },
   "devDependencies": {
     "@types/node": "^20.12.12",
     "@types/node-cron": "^3.0.11",
+    "@types/nodemailer": "^8.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }

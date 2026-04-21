@@ -25,9 +25,14 @@ export function Topbar({ email, isAdmin }: { email: string; isAdmin: boolean }) 
       </Link>
       <div style={{ flex: 1 }} />
       {isAdmin && (
-        <Link href="/admin/users" style={{ color: '#9ab', textDecoration: 'none' }}>
-          Admin
-        </Link>
+        <>
+          <Link href="/admin/users" style={{ color: '#9ab', textDecoration: 'none' }}>
+            Admin
+          </Link>
+          <Link href="/settings" style={{ color: '#9ab', textDecoration: 'none' }}>
+            Settings
+          </Link>
+        </>
       )}
       <span style={{ color: '#888' }}>{email}</span>
       <button

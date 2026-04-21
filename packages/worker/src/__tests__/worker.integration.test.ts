@@ -12,15 +12,36 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 type SdkBehavior = {
   messages?: unknown[];
   researchJson?: unknown | null; // null → write nothing
+  stage2Output?: string; // text emitted by the summary SDK call
 };
 let sdkBehavior: SdkBehavior = {};
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
-  query: ({ options }: { options: { cwd: string } }) => {
+  query: ({ options }: { options: { cwd?: string; allowedTools?: string[] } }) => {
+    const isSummary = Array.isArray(options.allowedTools) && options.allowedTools.length === 0;
     const cwd = options.cwd;
     async function* gen() {
+      if (isSummary) {
+        const text =
+          sdkBehavior.stage2Output ??
+          JSON.stringify({
+            subject: 'Test subject',
+            intro: '',
+            items: [],
+            empty_reason: 'no items',
+          });
+        yield {
+          type: 'assistant',
+          message: { content: [{ type: 'text', text }] },
+        };
+        return;
+      }
       for (const m of sdkBehavior.messages ?? []) yield m;
-      if (sdkBehavior.researchJson !== null && sdkBehavior.researchJson !== undefined) {
+      if (
+        cwd &&
+        sdkBehavior.researchJson !== null &&
+        sdkBehavior.researchJson !== undefined
+      ) {
         await fs.mkdir(cwd, { recursive: true });
         await fs.writeFile(
           path.join(cwd, 'research.json'),
@@ -30,6 +51,14 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
       }
     }
     return gen();
+  },
+}));
+
+vi.mock('nodemailer', () => ({
+  default: {
+    createTransport: () => ({
+      sendMail: async () => ({ messageId: 'test-msg-id' }),
+    }),
   },
 }));
 
@@ -99,6 +128,20 @@ beforeEach(async () => {
   await prisma.job.deleteMany();
   await prisma.user.deleteMany();
   sdkBehavior = {};
+  await prisma.setting.upsert({
+    where: { id: 1 },
+    create: {
+      id: 1,
+      gmailUser: 'test@gmail.com',
+      gmailAppPassword: 'pw',
+      senderName: 'Test',
+    },
+    update: {
+      gmailUser: 'test@gmail.com',
+      gmailAppPassword: 'pw',
+      senderName: 'Test',
+    },
+  });
 });
 
 describe('onFire', () => {
@@ -120,8 +163,8 @@ describe('onFire', () => {
   });
 });
 
-describe('poll.tick (runResearch)', () => {
-  it('runs Stage 1 and persists researchRaw; status stays running', async () => {
+describe('poll.tick (pipeline)', () => {
+  it('runs the full pipeline and flips status to success', async () => {
     const job = await createJob();
     const run = await prisma.run.create({ data: { jobId: job.id, status: 'queued' } });
     sdkBehavior = {
@@ -152,13 +195,15 @@ describe('poll.tick (runResearch)', () => {
     await tick();
 
     const done = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
-    expect(done.status).toBe('running');
+    expect(done.status).toBe('success');
     expect(done.startedAt).toBeInstanceOf(Date);
-    expect(done.finishedAt).toBeNull();
+    expect(done.finishedAt).toBeInstanceOf(Date);
     expect(done.researchRaw).toMatchObject({
       items: [expect.objectContaining({ title: 'A' })],
       fetch_errors: [],
     });
+    expect(done.stage2Json).toMatchObject({ subject: 'Test subject' });
+    expect(typeof done.renderedOutput).toBe('string');
 
     const logs = await prisma.runLog.findMany({ where: { runId: run.id } });
     const stages = new Set(logs.map((l) => l.stage));
@@ -222,7 +267,7 @@ describe('poll.tick (runResearch)', () => {
 
     await Promise.all([tick(), tick()]);
     const final = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
-    expect(final.status).toBe('running');
+    expect(final.status).toBe('success');
     const sysLogs = await prisma.runLog.findMany({
       where: { runId: run.id, stage: 'sys' },
     });

@@ -34,10 +34,12 @@ export function JobForm({
   initial,
   jobId,
   userEmail,
+  defaults,
 }: {
   initial: JobFormValues | null;
   jobId?: string;
   userEmail: string;
+  defaults?: { modelResearch: string; modelSummary: string };
 }) {
   const router = useRouter();
   const [v, setV] = useState<JobFormValues>(
@@ -51,8 +53,8 @@ export function JobForm({
       recipientEmail: userEmail,
       outputFormat: 'markdown',
       maxItems: 6,
-      modelResearch: 'claude-sonnet-4-6',
-      modelSummary: 'claude-haiku-4-5',
+      modelResearch: defaults?.modelResearch ?? 'claude-sonnet-4-6',
+      modelSummary: defaults?.modelSummary ?? 'claude-haiku-4-5',
       monthlyBudget: 60,
       minIntervalMinutes: null,
     },

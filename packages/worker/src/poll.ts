@@ -1,5 +1,8 @@
 import { logger, prisma } from '@renews/shared';
+import { runEmail } from './pipeline/email.js';
+import { runRender } from './pipeline/render.js';
 import { runResearch } from './pipeline/research.js';
+import { runSummary } from './pipeline/summarize.js';
 
 const HEARTBEAT_MS = 30_000;
 
@@ -43,10 +46,23 @@ async function execute(runId: string): Promise<void> {
     });
     if (!run) throw new Error(`run ${runId} not found`);
 
-    await runResearch(runId, run.job);
-    // Plan 4 stops after Stage 1. Status stays `running`; plan 5 will chain
-    // Stage 2 here and flip to success. No finishedAt yet.
-    logger.info(`poll: run ${runId} stage 1 complete (status stays running until plan 5)`);
+    const research = await runResearch(runId, run.job);
+    const stage2 = await runSummary(runId, run.job, research);
+    const rendered = runRender(run.job, stage2);
+    await prisma.run.update({
+      where: { id: runId },
+      data: { renderedOutput: rendered },
+    });
+    await runEmail(runId, run.job, stage2, rendered);
+    await prisma.run.update({
+      where: { id: runId },
+      data: { status: 'success', finishedAt: new Date(), heartbeatAt: null },
+    });
+    await prisma.job.update({
+      where: { id: run.jobId },
+      data: { lastRunAt: new Date() },
+    });
+    logger.info(`poll: run ${runId} complete`);
   } catch (err) {
     const msg = err instanceof Error ? err.stack || err.message : String(err);
     logger.error(`poll: run ${runId} failed:`, msg);
