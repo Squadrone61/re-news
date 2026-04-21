@@ -81,7 +81,13 @@ export function JobsTable({ jobs, showOwner }: { jobs: JobRow[]; showOwner: bool
             <td style={td}>{humanCron(j.schedule)}</td>
             {showOwner && <td style={td}>{j.ownerEmail}</td>}
             <td style={td}>
-              {j.lastRun ? `${j.lastRun.status} · ${relTime(j.lastRun.createdAt)}` : '—'}
+              {j.lastRun ? (
+                <Link href={`/runs/${j.lastRun.id}`} style={{ color: '#e6e6e6' }}>
+                  {j.lastRun.status} · {relTime(j.lastRun.createdAt)}
+                </Link>
+              ) : (
+                '—'
+              )}
             </td>
             <td style={td}>
               <input

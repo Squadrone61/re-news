@@ -23,6 +23,9 @@ export function Topbar({ email, isAdmin }: { email: string; isAdmin: boolean }) 
       <Link href="/" style={{ color: '#e6e6e6', textDecoration: 'none', fontWeight: 600 }}>
         re-news
       </Link>
+      <Link href="/runs" style={{ color: '#9ab', textDecoration: 'none' }}>
+        Runs
+      </Link>
       <div style={{ flex: 1 }} />
       {isAdmin && (
         <>

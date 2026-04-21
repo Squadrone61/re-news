@@ -15,7 +15,7 @@ This plan set supersedes an earlier 11-plan draft. Scope was trimmed aggressivel
 7. [Hardening](./07-hardening.md) — rate-limit → `deferred`, retries w/ backoff, monthly budget, min interval, research caps, failure-notice emails
 8. [Deploy + Polish](./08-deploy-polish.md) — GH Actions → GHCR → existing Watchtower (label-scoped); cron collision hints; next-5-fires preview; AccountInfo badge; token/cost capture; error formatting; run-dir cleanup; nightly pg_dump
 
-**Shipped**: 1, 2, 3, 4, 5. **Next**: 6.
+**Shipped**: 1, 2, 3, 4, 5, 6. **Next**: 7.
 
 ## Decisions Log
 
@@ -67,6 +67,10 @@ Locked during planning. Change here first if you revisit; then sweep referencing
 | SDK log mapping | `assistant.text` → `info` row; `tool_use` → `"tool: name(argsJSON)"` truncated at 200 chars; `tool_result` in `user` message → `"result: ..."` truncated at 200 chars (error level if `is_error`); `result.is_error` → `"result <subtype>: ..."` at error level. `system`/partial/status messages skipped. Full research JSON never logged — only the `sys` summary line. | Keeps `run_logs` useful for the live tail without dumping the full research payload (already in `runs.research_raw`) |
 | Worker image extras | `git` and `curl` added to the worker Dockerfile in plan 4 for the SDK's Bash tool (curl for RSS, git for SDK housekeeping). | Bookworm-slim doesn't ship either by default |
 | SDK import surface | `@anthropic-ai/claude-agent-sdk` is imported only from `packages/worker/src/pipeline/*`. `web` and `shared` must never import it. | Keeps the native Claude Code binary out of the Next.js bundle and the edge middleware |
+| Resend transport (plan 6) | Web handler sends directly via a local `packages/web/src/lib/mailer.ts` (Nodemailer), re-reading the `Setting` singleton each call. No new run row; a single `sys` log line records the resend. | Worker is only reachable via the `runs` queue — adding a "resend" signal would mean a control-plane row. A direct send is one function call and stays on the request thread. |
+| Run rerun split (plan 6) | Re-run Stage 2 inserts a new `runs` row with `skipResearch=true` + copied `researchRaw`; poll.execute branches on that flag to skip `runResearch()`. Re-run full uses the same path as Run Now. Old runs are never mutated. | History preserved; no schema-level polymorphism (`meta jsonb` was considered and rejected in favor of the dedicated `skip_research` bool already in the schema). |
+| SSE implementation (plan 6) | Next.js route handler with `runtime='nodejs'` + `ReadableStream`, 1s polling on `run_logs` (gt lastSeenId) and `runs.status` separately. Headers: `text/event-stream`, `no-cache, no-transform`, `X-Accel-Buffering: no`. Closes on `req.signal` abort. | Edge runtime incompatible with iron-session/Prisma/long-lived streams. `X-Accel-Buffering: no` required if anything reverse-proxies in front. |
+| HTML preview sandbox (plan 6) | `<iframe srcDoc={rendered} sandbox="">` — empty sandbox attribute, no `allow-same-origin`, no `allow-scripts`. | Opaque-origin iframe can still render inlined CSS; no script execution means no access to parent cookies/session. Adding `allow-same-origin` would defeat the purpose. |
 
 ## Plan Format
 

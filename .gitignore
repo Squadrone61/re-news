@@ -16,7 +16,7 @@ plans/
 
 # logs
 *.log
-logs/
+/logs/
 
 # editor
 .vscode/

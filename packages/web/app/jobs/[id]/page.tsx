@@ -13,9 +13,15 @@ export default async function EditJobPage({ params }: { params: Promise<{ id: st
   const me = await getCurrentUser();
   if (!me) redirect('/login');
   const { id } = await params;
-  const job = await prisma.job.findUnique({ where: { id } });
+  const job = await prisma.job.findUnique({
+    where: { id },
+    include: {
+      runs: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true } },
+    },
+  });
   if (!job) notFound();
   if (job.userId !== me.id && !me.isAdmin) notFound();
+  const latestRunId = job.runs[0]?.id ?? null;
 
   const initial: JobFormValues = {
     name: job.name,
@@ -40,6 +46,14 @@ export default async function EditJobPage({ params }: { params: Promise<{ id: st
         <Link href="/" style={{ color: '#9ab' }}>
           ← Back
         </Link>
+        {latestRunId && (
+          <>
+            {' · '}
+            <Link href={`/runs/${latestRunId}`} style={{ color: '#9ab' }}>
+              Latest run →
+            </Link>
+          </>
+        )}
         <h1>{job.name}</h1>
         <JobForm initial={initial} jobId={job.id} userEmail={me.email} />
       </main>

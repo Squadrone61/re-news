@@ -1,7 +1,7 @@
-import { logger, prisma } from '@renews/shared';
+import { logger, prisma, streamLogToDb } from '@renews/shared';
 import { runEmail } from './pipeline/email.js';
 import { runRender } from './pipeline/render.js';
-import { runResearch } from './pipeline/research.js';
+import { type ResearchJson, runResearch } from './pipeline/research.js';
 import { runSummary } from './pipeline/summarize.js';
 
 const HEARTBEAT_MS = 30_000;
@@ -46,7 +46,13 @@ async function execute(runId: string): Promise<void> {
     });
     if (!run) throw new Error(`run ${runId} not found`);
 
-    const research = await runResearch(runId, run.job);
+    let research: ResearchJson;
+    if (run.skipResearch && run.researchRaw) {
+      research = run.researchRaw as unknown as ResearchJson;
+      await streamLogToDb(runId, 'sys', 'skipping research (rerun-stage2): reusing researchRaw');
+    } else {
+      research = await runResearch(runId, run.job);
+    }
     const stage2 = await runSummary(runId, run.job, research);
     const rendered = runRender(run.job, stage2);
     await prisma.run.update({

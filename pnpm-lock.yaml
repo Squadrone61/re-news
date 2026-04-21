@@ -73,9 +73,15 @@ importers:
       iron-session:
         specifier: ^8.0.4
         version: 8.0.4
+      marked:
+        specifier: ^18.0.2
+        version: 18.0.2
       next:
         specifier: 14.2.15
         version: 14.2.15(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      nodemailer:
+        specifier: ^6
+        version: 6.10.1
       react:
         specifier: 18.3.1
         version: 18.3.1
@@ -89,6 +95,9 @@ importers:
       '@types/node':
         specifier: ^20.12.12
         version: 20.19.39
+      '@types/nodemailer':
+        specifier: ^8.0.0
+        version: 8.0.0
       '@types/react':
         specifier: ^18.3.12
         version: 18.3.28

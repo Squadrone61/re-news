@@ -37,11 +37,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
         return;
       }
       for (const m of sdkBehavior.messages ?? []) yield m;
-      if (
-        cwd &&
-        sdkBehavior.researchJson !== null &&
-        sdkBehavior.researchJson !== undefined
-      ) {
+      if (cwd && sdkBehavior.researchJson !== null && sdkBehavior.researchJson !== undefined) {
         await fs.mkdir(cwd, { recursive: true });
         await fs.writeFile(
           path.join(cwd, 'research.json'),
@@ -255,6 +251,38 @@ describe('poll.tick (pipeline)', () => {
     const raw = done.researchRaw as { items: Array<{ content: string }> };
     expect(raw.items).toHaveLength(25);
     expect(raw.items[0]!.content.length).toBe(800);
+  });
+
+  it('skipResearch reuses researchRaw and emits no research-stage logs', async () => {
+    const job = await createJob();
+    const researchRaw = {
+      fetched_at: '2026-04-21T00:00:00Z',
+      items: [
+        { source: 'https://example.com', title: 'X', url: 'https://example.com/x', content: 'y' },
+      ],
+      fetch_errors: [],
+    };
+    const run = await prisma.run.create({
+      data: {
+        jobId: job.id,
+        status: 'queued',
+        skipResearch: true,
+        researchRaw,
+      },
+    });
+    sdkBehavior = { messages: [], researchJson: null };
+
+    await tick();
+
+    const done = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
+    expect(done.status).toBe('success');
+    expect(done.researchRaw).toMatchObject({ items: [expect.objectContaining({ title: 'X' })] });
+
+    const logs = await prisma.runLog.findMany({ where: { runId: run.id } });
+    expect(logs.some((l) => l.stage === 'research')).toBe(false);
+    expect(logs.some((l) => l.stage === 'sys' && l.message.startsWith('skipping research'))).toBe(
+      true,
+    );
   });
 
   it('does not double-claim when ticks race', async () => {

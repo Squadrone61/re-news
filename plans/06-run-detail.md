@@ -54,15 +54,15 @@
 
 ## Acceptance criteria
 
-- [ ] Opening `/runs/<id>` during an in-flight run shows log lines arriving within ~1s of worker emitting them
-- [ ] Stages visually grouped; collapsing a stage hides its logs
-- [ ] HTML preview renders in a **fully sandboxed** iframe (no `allow-same-origin`, no `allow-scripts`); inspecting the iframe shows origin `null`
-- [ ] Raw research JSON panel collapsed by default; expanded shows valid JSON
-- [ ] **Resend** button re-sends the same email without creating a new run; inbox receives duplicate; `sys` log "resent by user" appears
-- [ ] **Re-run Stage 2** creates a new run with `researchRaw` copied; its logs have no `research`-stage entries — only `summary`/`email`/`sys`; finishes faster than a full run
-- [ ] **Re-run full** creates a new run going through all stages
-- [ ] Non-owner (user A hitting user B's run) → 404 on all run endpoints (list, detail, SSE, resend, rerun-*)
-- [ ] Failed run → status badge prominent in header; error string displayed below
+- [x] Opening `/runs/<id>` during an in-flight run shows log lines arriving within ~1s of worker emitting them
+- [x] Stages visually grouped; collapsing a stage hides its logs
+- [x] HTML preview renders in a **fully sandboxed** iframe (no `allow-same-origin`, no `allow-scripts`); inspecting the iframe shows origin `null`
+- [x] Raw research JSON panel collapsed by default; expanded shows valid JSON
+- [x] **Resend** button re-sends the same email without creating a new run; inbox receives duplicate; `sys` log "resent by user" appears
+- [x] **Re-run Stage 2** creates a new run with `researchRaw` copied; its logs have no `research`-stage entries — only `summary`/`email`/`sys`; finishes faster than a full run
+- [x] **Re-run full** creates a new run going through all stages
+- [x] Non-owner (user A hitting user B's run) → 404 on all run endpoints (list, detail, SSE, resend, rerun-*)
+- [x] Failed run → status badge prominent in header; error string displayed below
 
 ## Verification
 
@@ -92,7 +92,14 @@ curl -s -o /dev/null -w '%{http_code}\n' -b /tmp/cj-alice $BASE/api/runs/$RUN  #
 curl -s -o /dev/null -w '%{http_code}\n' -b /tmp/cj-alice $BASE/api/runs/$RUN/logs/stream  # 404
 ```
 
-## Notes / gotchas
+## Notes
+
+- Shipped as specified. `skipResearch` column already existed in the schema (added ahead of time), so no migration was needed in this plan.
+- Resend is implemented in the **web** handler via a local `packages/web/src/lib/mailer.ts` (Nodemailer), not by signaling the worker. This added `nodemailer` + `marked` (for markdown preview) + `@types/nodemailer` as `packages/web` deps.
+- SSE route uses `runtime='nodejs'`; polling cadence 1s on both `run_logs` (id-gt lastSeenId) and `runs.status`. Terminal-status transitions trigger a client `router.refresh()` so server-rendered artifacts (`researchRaw`, `stage2Json`, `renderedOutput`) re-hydrate without a manual reload.
+- A new integration test (`skipResearch reuses researchRaw and emits no research-stage logs`) covers the plan-6 worker branch — 22 tests now pass.
+
+## Original gotchas
 
 - **SSE by polling**: 1s poll on `run_logs` is fine at family scale. At most 1–2 active tabs × <10 lines/s = trivial
 - **`sandbox=""` not `allow-same-origin`**: `srcdoc` + empty sandbox puts the iframe in a unique opaque origin. Rendered HTML + inline CSS still work; no JS execution (we don't emit any anyway). Safer default than the earlier draft's allow-same-origin
