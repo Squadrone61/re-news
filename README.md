@@ -17,7 +17,7 @@ v1 is feature-complete. All 8 implementation plans have shipped:
 - **Hardening** — rate-limit defer, retry w/ backoff, monthly budget, min interval, failure-notice email
 - **Deploy + polish** — GHA → GHCR → Watchtower; cron collision hints; AccountInfo badge; token/cost chips; formatted errors; nightly `pg_dump` backups; 30-day run-dir cleanup
 
-Architecture, non-obvious constraints, and decisions are documented in [`CLAUDE.md`](./CLAUDE.md). The product spec lives at [`plans/spec.md`](./plans/spec.md) and a Decisions Log at [`plans/README.md`](./plans/README.md).
+Architecture, non-obvious constraints, and the Decisions Log are documented in [`CLAUDE.md`](./CLAUDE.md) and [`plans/README.md`](./plans/README.md).
 
 ## Architecture
 

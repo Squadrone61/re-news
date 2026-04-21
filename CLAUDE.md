@@ -8,7 +8,7 @@ Plans 1–8 landed — v1 is feature-complete. The 3-service compose stack boots
 
 **Plan 8 (deploy + polish)**: GH Actions (`.github/workflows/build-and-push.yml`) builds `ghcr.io/squadrone61/re-news-{web,worker}:{latest,main,sha-<sha>}` on every push to `main`; `docker-compose.prod.yml` overrides `build:` with `!reset null` + `pull_policy: always`; the home server's existing Watchtower (label-scoped) rolls the two labeled services and never touches `renews_db`. Separate `docker-compose.backup.yml` ships a `postgres:16-alpine` one-shot via `profiles: [backup]` that `pg_dump`s to `./data/backups/YYYY-MM-DD.sql.gz` and prunes >14d (`make backup`; host crontab drives the schedule). Worker registers a fixed daily cron `0 3 * * *` that removes `/app/data/runs/<id>` for runs with `finishedAt < now - 30d` (DB rows + `renderedOutput` retained). Worker writes `/app/data/account_info.json` on boot + every 5 min; `web` bind-mounts `./data:/app/data:ro` so `/settings` displays plan/tier/refresh time ("auth unknown" if missing, "stale" if >10 min old). Job editor debounces 300 ms on schedule change and calls `GET /api/jobs/cron-preview?schedule=...&excludeId=...` → `{ next5, collisions }`; UI suggests `:03`/`:17`/`:37` offsets when another enabled job's next fire lands on the same UTC minute within 60 min. Run detail shows `tokensIn / tokensOut / costUsd` chips (best-effort SDK usage capture — never throws) and a classified `ErrorDisplay` with icon + hint for `rate_limit:` / `email send:` / `stage2 validation failed` prefixes (raw string under a `<details>` toggle). Settings footer prints the resolved timezone.
 
-**The implementation plans in `plans/` are the authoritative source of truth** — start with `plans/README.md` (index + Decisions Log), then read the relevant plan file. `plans/spec.md` is the original product spec; it has been kept in sync with locked decisions but the 8 plan files are where actionable implementation detail lives.
+**Authoritative docs**: this file for current architecture + non-obvious constraints; [`README.md`](./README.md) for the user-facing "what exists" summary and deploy runbook; [`plans/README.md`](./plans/README.md) for the Decisions Log (non-obvious choices made during build). Individual plan files and the original spec have been removed now that v1 is shipped — the code is the source of truth.
 
 **Build order**: 8 sequenced plans in `plans/` (01-skeleton → 08-deploy-polish). Completed: all 8. v1 is feature-complete; post-v1 work goes in new plans.
 
@@ -45,7 +45,7 @@ Monorepo layout under `packages/{web,worker,shared}` with Prisma schema at the r
 
 **The two-agent split is load-bearing.**
 - Stage 1 (research): `allowedTools: ["WebFetch", "WebSearch", "Bash", "Read", "Write"]`, `permissionMode: "acceptEdits"`, larger model (default `claude-sonnet-4-6`), `maxTurns: 40`. Must cap output at 25 items × 800 chars each — enforced in the prompt so Stage 2 never OOMs context. A post-parse defense-in-depth truncation applies the same caps in code.
-- Stage 2 (summarize): `allowedTools: []`, `maxTurns: 1`, cheap model (default `claude-haiku-4-5`). Emits strict JSON matching the schema in `plans/spec.md` §6.
+- Stage 2 (summarize): `allowedTools: []`, `maxTurns: 1`, cheap model (default `claude-haiku-4-5`). Emits strict JSON matching `StageTwoSchema` in `packages/shared/src/schemas.ts`.
 - Always validate Stage 2 output server-side (zod schema + item count + body word count + JSON parse). One retry with a terse "violated a length rule, re-emit strictly tighter" prompt, then fail.
 - Persist Stage 1's raw research JSON to `runs.research_raw` so Stage 2 can be re-run cheaply from the UI (plan 6) without re-scraping.
 
@@ -158,7 +158,7 @@ Five tables:
 - `run_logs` — streamed from SDK messages, keyed by `run_id` + `stage` where stage is `research | summary | email | sys`.
 - `settings` — singleton row for admin-configured shared state: `gmail_user`, `gmail_app_password`, `sender_name`, `default_model_research`, `default_model_summary`, `worker_concurrency` (informational in v1).
 
-Full column list in `plans/spec.md` §5 and reflected in `prisma/schema.prisma` (once plan 1 lands).
+Full column list in `prisma/schema.prisma`.
 
 ## Commands
 
