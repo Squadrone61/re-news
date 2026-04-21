@@ -13,6 +13,7 @@ type SdkBehavior = {
   messages?: unknown[];
   researchJson?: unknown | null; // null → write nothing
   stage2Output?: string; // text emitted by the summary SDK call
+  cancelDuringResearch?: boolean;
 };
 let sdkBehavior: SdkBehavior = {};
 
@@ -37,6 +38,19 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
         return;
       }
       for (const m of sdkBehavior.messages ?? []) yield m;
+      if (sdkBehavior.cancelDuringResearch) {
+        if (cwd) {
+          const runId = path.basename(cwd);
+          const { prisma } = await import('@renews/shared');
+          await prisma.run.update({
+            where: { id: runId },
+            data: { cancelRequested: true },
+          });
+        }
+        // Sleep long enough for the cancel-watch (1s) to fire and abort.
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        throw new Error('aborted by controller');
+      }
       if (cwd && sdkBehavior.researchJson !== null && sdkBehavior.researchJson !== undefined) {
         await fs.mkdir(cwd, { recursive: true });
         await fs.writeFile(
@@ -287,6 +301,73 @@ describe('poll.tick (pipeline)', () => {
     expect(logs.some((l) => l.stage === 'sys' && l.message.startsWith('skipping research'))).toBe(
       true,
     );
+  });
+
+  it('cancels mid-research and settles to cancelled status', async () => {
+    const user = await prisma.user.create({
+      data: { email: `cancel-${Date.now()}@test`, passwordHash: 'x', isAdmin: false },
+    });
+    const job = await prisma.job.create({
+      data: {
+        userId: user.id,
+        name: 'cancel-test',
+        schedule: '0 8 * * *',
+        sources: [],
+        topic: 't',
+        basePrompt: 'p',
+        recipientEmail: 'r@test',
+      },
+    });
+    const run = await prisma.run.create({
+      data: { jobId: job.id, status: 'queued' },
+    });
+
+    sdkBehavior = { cancelDuringResearch: true };
+
+    await tick();
+
+    const after = await prisma.run.findUnique({ where: { id: run.id } });
+    expect(after?.status).toBe('cancelled');
+    expect(after?.cancelRequested).toBe(false);
+    expect(after?.error).toBe('cancelled by user');
+    expect(after?.finishedAt).not.toBeNull();
+    const siblings = await prisma.run.count({ where: { jobId: job.id } });
+    expect(siblings).toBe(1);
+  });
+
+  it('cancels at stage boundary (between research and summary) without running stage 2', async () => {
+    const user = await prisma.user.create({
+      data: { email: `cancel-sb-${Date.now()}@test`, passwordHash: 'x', isAdmin: false },
+    });
+    const job = await prisma.job.create({
+      data: {
+        userId: user.id,
+        name: 'cancel-stage-boundary',
+        schedule: '0 8 * * *',
+        sources: [],
+        topic: 't',
+        basePrompt: 'p',
+        recipientEmail: 'r@test',
+      },
+    });
+    const run = await prisma.run.create({
+      data: {
+        jobId: job.id,
+        status: 'queued',
+        skipResearch: true,
+        researchRaw: { items: [], fetch_errors: [], fetched_at: new Date().toISOString() },
+        cancelRequested: true,
+      },
+    });
+
+    sdkBehavior = {};
+
+    await tick();
+
+    const after = await prisma.run.findUnique({ where: { id: run.id } });
+    expect(after?.status).toBe('cancelled');
+    expect(after?.cancelRequested).toBe(false);
+    expect(after?.stage2Json).toBeNull();
   });
 
   it('does not double-claim when ticks race', async () => {
