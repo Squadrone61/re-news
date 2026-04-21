@@ -1,0 +1,15 @@
+services:
+  migrate:
+    build:
+      context: .
+      dockerfile: packages/web/Dockerfile
+    container_name: renews_migrate
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgres://newsletter:${DB_PASSWORD}@db:5432/newsletter
+    working_dir: /app
+    entrypoint: ["sh", "-lc"]
+    command: ["npx --yes prisma@5.22.0 migrate deploy --schema=./prisma/schema.prisma"]
+    networks: [renews_net]
+    restart: "no"

@@ -1,0 +1,68 @@
+name: re-news
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: renews_db
+    environment:
+      POSTGRES_DB: newsletter
+      POSTGRES_USER: newsletter
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U newsletter -d newsletter"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [renews_net]
+    mem_limit: 512m
+    cpus: 0.5
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: packages/web/Dockerfile
+    container_name: renews_web
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgres://newsletter:${DB_PASSWORD}@db:5432/newsletter
+      SESSION_PASSWORD: ${SESSION_PASSWORD}
+      APP_VERSION: dev
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    ports:
+      - "3100:3000"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    networks: [renews_net]
+    mem_limit: 512m
+    cpus: 1.0
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: packages/worker/Dockerfile
+    container_name: renews_worker
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgres://newsletter:${DB_PASSWORD}@db:5432/newsletter
+      CLAUDE_CODE_USE_SUBSCRIPTION: "1"
+    volumes:
+      - ${HOME}/.claude:/root/.claude
+      - ./data/runs:/app/data/runs
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    networks: [renews_net]
+    mem_limit: 2g
+    cpus: 2.0
+    restart: unless-stopped
+
+networks:
+  renews_net:
+    driver: bridge
+    name: renews_net

@@ -1,0 +1,111 @@
+// re-news Prisma schema — initial migration covers all v1 tables.
+// Plans 2+ add data, not schema (except explicit column-use noted in CLAUDE.md).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RunStatus {
+  queued
+  running
+  success
+  failed
+  deferred
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  isAdmin      Boolean  @default(false) @map("is_admin")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  jobs         Job[]
+
+  @@map("users")
+}
+
+model Job {
+  id                 String    @id @default(uuid()) @db.Uuid
+  userId             String    @map("user_id") @db.Uuid
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name               String
+  enabled            Boolean   @default(true)
+  schedule           String
+  sources            Json      @default("[]")
+  topic              String
+  basePrompt         String    @map("base_prompt")
+  recipientEmail     String    @map("recipient_email")
+  outputFormat       String    @default("markdown") @map("output_format")
+  maxItems           Int       @default(6) @map("max_items")
+  modelResearch      String    @default("claude-sonnet-4-6") @map("model_research")
+  modelSummary       String    @default("claude-haiku-4-5") @map("model_summary")
+  monthlyBudget      Int       @default(60) @map("monthly_budget")
+  minIntervalMinutes Int?      @map("min_interval_minutes")
+  lastRunAt          DateTime? @map("last_run_at") @db.Timestamptz(6)
+  nextRunAt          DateTime? @map("next_run_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  runs               Run[]
+
+  @@index([userId])
+  @@map("jobs")
+}
+
+model Run {
+  id             String    @id @default(uuid()) @db.Uuid
+  jobId          String    @map("job_id") @db.Uuid
+  job            Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  status         RunStatus @default(queued)
+  attempt        Int       @default(0)
+  skipResearch   Boolean   @default(false) @map("skip_research")
+  startedAt      DateTime? @map("started_at") @db.Timestamptz(6)
+  finishedAt     DateTime? @map("finished_at") @db.Timestamptz(6)
+  heartbeatAt    DateTime? @map("heartbeat_at") @db.Timestamptz(6)
+  nextRunAt      DateTime? @map("next_run_at") @db.Timestamptz(6)
+  researchRaw    Json?     @map("research_raw")
+  stage2Json     Json?     @map("stage2_json")
+  renderedOutput String?   @map("rendered_output")
+  tokensIn       Int?      @map("tokens_in")
+  tokensOut      Int?      @map("tokens_out")
+  costUsd        Decimal?  @map("cost_usd") @db.Decimal(10, 4)
+  error          String?
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  logs           RunLog[]
+
+  @@index([jobId])
+  @@index([status])
+  @@index([heartbeatAt])
+  @@map("runs")
+}
+
+model RunLog {
+  id      BigInt   @id @default(autoincrement())
+  runId   String   @map("run_id") @db.Uuid
+  run     Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  ts      DateTime @default(now()) @db.Timestamptz(6)
+  level   String   @default("info")
+  stage   String
+  message String
+
+  @@index([runId])
+  @@map("run_logs")
+}
+
+model Setting {
+  id                    Int      @id @default(1)
+  gmailUser             String?  @map("gmail_user")
+  gmailAppPassword      String?  @map("gmail_app_password")
+  senderName            String?  @map("sender_name")
+  defaultModelResearch  String   @default("claude-sonnet-4-6") @map("default_model_research")
+  defaultModelSummary   String   @default("claude-haiku-4-5") @map("default_model_summary")
+  workerConcurrency     Int      @default(1) @map("worker_concurrency")
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("settings")
+}
