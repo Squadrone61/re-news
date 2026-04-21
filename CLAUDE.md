@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Status
 
-Greenfield. The repo currently contains `CLAUDE.md`, `.gitignore`, and `plans/` (gitignored). No scaffolding, package.json, or services exist yet. **The implementation plans in `plans/` are the authoritative source of truth** — start with `plans/README.md` (index + Decisions Log), then read the relevant plan file. `plans/spec.md` is the original product spec; it has been kept in sync with locked decisions but the 8 plan files are where actionable implementation detail lives.
+Plans 1–2 landed. The 3-service compose stack boots (`web`, `worker`, `db`), Prisma schema is migrated, and session-based auth + full jobs CRUD ship against a per-user ownership model. "Run Now" inserts a `queued` runs row but the worker doesn't pick it up yet (plan 3).
 
-**Build order**: 8 sequenced plans in `plans/` (01-skeleton → 08-deploy-polish). Each plan has Goal, Dependencies, Scope, Tasks, Acceptance Criteria, and a Verification block with shell commands. Work them in order.
+**The implementation plans in `plans/` are the authoritative source of truth** — start with `plans/README.md` (index + Decisions Log), then read the relevant plan file. `plans/spec.md` is the original product spec; it has been kept in sync with locked decisions but the 8 plan files are where actionable implementation detail lives.
+
+**Build order**: 8 sequenced plans in `plans/` (01-skeleton → 08-deploy-polish). Each plan has Goal, Dependencies, Scope, Tasks, Acceptance Criteria, and a Verification block with shell commands. Work them in order. Completed: 1, 2. Next: 3 (worker loop).
 
 ## What We're Building
 
@@ -62,6 +64,13 @@ Monorepo layout under `packages/{web,worker,shared}` with Prisma schema at the r
 - Why not Resend: Resend (and every reputable provider) refuses free-email sender domains. We don't own a verified domain. Gmail SMTP caps at ~500/day/account (plenty) and egresses via Google, not the home IP, so deliverability holds.
 - Settings GET masks the app password; Settings PUT treats empty `gmail_app_password` as "no change" (never accidentally wipe).
 
+**Password hashing uses `@node-rs/argon2`, a native module — do NOT import it from the edge middleware.**
+- `packages/shared`'s root entry (`@renews/shared`) is edge-safe: Prisma client + zod schemas + cron helpers. argon2 is exposed via the `@renews/shared/auth` subpath only. API route handlers import `hashPassword`/`verifyPassword` from the subpath; the middleware and edge-bundled code never do.
+- `packages/web/next.config.mjs` also declares `@node-rs/argon2` as a webpack `externals` (server build) so Next doesn't try to statically resolve the platform-specific `.node` binary through pnpm's symlinked layout. It's also listed in `experimental.serverComponentsExternalPackages` alongside `@prisma/client`.
+- iron-session cookie options live in `packages/web/src/lib/session-config.ts` (edge-safe, no Prisma); `getCurrentUser`/`requireAdmin` and the Node session helpers live in `packages/web/src/lib/session.ts`. Middleware imports only the config file.
+- The edge middleware can't hit the DB, so it can't answer "are there any users?" for the `/setup` gate. `/login` and `/setup` are public; the `/login` page does a client-side fetch to `/api/setup-status` and redirects to `/setup` if the DB is empty.
+- Middleware returns 401 JSON for unauthenticated `/api/*` requests and 307 → `/login?redirect=<path>` for pages. Preserve this split — a 307 on an API call confuses fetch consumers.
+
 **Playwright MCP is deferred to v1.1.**
 - `sources[].needs_browser` is persisted but the v1 worker instructs the research agent to skip such sources with a `fetch_errors` entry; does not fail the run.
 
@@ -86,18 +95,14 @@ Full column list in `plans/spec.md` §5 and reflected in `prisma/schema.prisma` 
 
 ## Commands
 
-None established yet — `package.json`, `docker-compose.yml`, and Prisma schema do not exist. Plan 1 ships them. Expected post-scaffolding flow:
-
-- `make up` — bring stack up
-- `make down` — bring it down
-- `make migrate` — apply pending Prisma migrations via the one-shot `migrate` service
-- `make logs` — tail all services
-- `make psql` — open psql against the `db` container
-- `make shell-web` / `make shell-worker` — exec into a service
-- `pnpm lint && pnpm typecheck && pnpm test` — root-level quality gates
-- `pnpm --filter <pkg> <script>` — per-package work
-
-Update this file with concrete commands once plan 1 is complete.
+- `make up` / `make down` — bring the 3-service stack up/down
+- `make migrate` — run `prisma migrate deploy` via the one-shot `migrate` service (never from `web`/`worker` startup — parallel boots race)
+- `make logs` / `make psql` / `make shell-web` / `make shell-worker` — the usual
+- `pnpm lint` / `pnpm typecheck` / `pnpm test` — root-level quality gates (all three must pass)
+- `pnpm lint:fix` — Biome autofixes
+- `pnpm --filter @renews/<pkg> <script>` — per-package work (shared, web, worker)
+- After changes to `@renews/shared`: `pnpm --filter @renews/shared build` before `pnpm --filter @renews/web build/typecheck` — web consumes the emitted `dist/`
+- `make backup` — stub until plan 8
 
 ## When Implementing
 

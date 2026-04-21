@@ -40,6 +40,8 @@ Locked during planning. Change here first if you revisit; then sweep referencing
 | Auth model | **Multi-user app** (session login per user, per-user ownership) over a **single shared Claude subscription** (admin's, mounted RW into worker). Shared Gmail sender; per-user `recipient_email` per job. No self-signup; admin creates users via `/admin/users`. | Family use; Anthropic policy satisfied because users never touch Claude creds |
 | Auth timing | Session auth shipped in plan 2 (not retrofitted in a later plan) | Avoids writing 6 plans worth of handlers against a stub and then refactoring |
 | CSRF | `SameSite=Lax` session cookie + POST-only mutations; no token | Adequate for LAN + POST-everywhere |
+| argon2 packaging | `@node-rs/argon2` exposed via `@renews/shared/auth` subpath only; webpack `externals` + `serverComponentsExternalPackages` on the web build | Native `.node` binary can't go through the edge middleware bundle or Next's file tracing under pnpm's symlinks. Root `@renews/shared` must stay edge-safe |
+| Middleware auth response | 401 JSON for `/api/*`, 307 → `/login` for pages | API consumers choke on redirects; browser flows need the redirect |
 | SSE for live logs | Polling `run_logs` every 1s on the backend | At family scale, LISTEN/NOTIFY is not worth the complexity |
 | `runs` columns | `stage2_json jsonb` + `rendered_output text` (separate) | Avoids a single column meaning different things at different lifecycle stages |
 | Run status enum | `queued \| running \| success \| failed \| deferred` (no intermediate `research_done` / `summary_done`) | Recovery keys on `research_raw IS NOT NULL`, not status |
