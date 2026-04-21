@@ -35,6 +35,8 @@ services:
       HOSTNAME: "0.0.0.0"
     ports:
       - "3100:3000"
+    volumes:
+      - ./data:/app/data:ro
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     networks: [renews_net]
@@ -54,7 +56,7 @@ services:
       CLAUDE_CODE_USE_SUBSCRIPTION: "1"
     volumes:
       - ${HOME}/.claude:/root/.claude
-      - ./data/runs:/app/data/runs
+      - ./data:/app/data
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     networks: [renews_net]

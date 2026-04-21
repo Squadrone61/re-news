@@ -8,8 +8,14 @@ import {
   validateLengths,
 } from '@renews/shared';
 import { buildRetryPrompt, buildSummaryPrompt } from '../prompts/summary.js';
+import { type UsageTotals, addUsage, emptyUsage, extractUsage } from './usage.js';
 
-export async function runSummary(runId: string, job: Job, research: unknown): Promise<StageTwo> {
+export async function runSummary(
+  runId: string,
+  job: Job,
+  research: unknown,
+  usage: UsageTotals = emptyUsage(),
+): Promise<StageTwo> {
   const attempt = async (prompt: string): Promise<StageTwo> => {
     let output = '';
     for await (const msg of query({
@@ -22,6 +28,7 @@ export async function runSummary(runId: string, job: Job, research: unknown): Pr
       },
     })) {
       output += extractText(msg);
+      addUsage(usage, extractUsage(msg));
       await streamLogToDb(runId, 'summary', msg);
     }
     const json = extractJson(output);

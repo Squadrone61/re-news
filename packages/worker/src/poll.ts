@@ -5,6 +5,7 @@ import { sendFailureNotice } from './pipeline/failureNotice.js';
 import { runRender } from './pipeline/render.js';
 import { type ResearchJson, runResearch } from './pipeline/research.js';
 import { runSummary } from './pipeline/summarize.js';
+import { emptyUsage, persistUsage } from './pipeline/usage.js';
 
 const HEARTBEAT_MS = 30_000;
 const MAX_ATTEMPTS = 3; // attempt is 0-indexed; 3 total tries
@@ -54,20 +55,22 @@ async function execute(runId: string): Promise<void> {
     });
     if (!run) throw new Error(`run ${runId} not found`);
 
+    const usage = emptyUsage();
     let research: ResearchJson;
     if (run.skipResearch && run.researchRaw) {
       research = run.researchRaw as unknown as ResearchJson;
       await streamLogToDb(runId, 'sys', 'skipping research (rerun-stage2): reusing researchRaw');
     } else {
-      research = await runResearch(runId, run.job);
+      research = await runResearch(runId, run.job, usage);
     }
-    const stage2 = await runSummary(runId, run.job, research);
+    const stage2 = await runSummary(runId, run.job, research, usage);
     const rendered = runRender(run.job, stage2);
     await prisma.run.update({
       where: { id: runId },
       data: { renderedOutput: rendered },
     });
     await runEmail(runId, run.job, stage2, rendered);
+    await persistUsage(runId, usage);
     await prisma.run.update({
       where: { id: runId },
       data: { status: 'success', finishedAt: new Date(), heartbeatAt: null },

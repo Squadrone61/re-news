@@ -1,7 +1,7 @@
 'use client';
 import cronstrue from 'cronstrue';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 type Source = { url: string; hint?: string; needsBrowser?: boolean };
 
@@ -73,6 +73,30 @@ export function JobForm({
       return 'Invalid cron expression';
     }
   }, [v.schedule]);
+
+  const [preview, setPreview] = useState<{
+    next5: string[];
+    collisions: { jobId: string; name: string }[];
+  } | null>(null);
+
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      try {
+        const qs = new URLSearchParams({ schedule: v.schedule });
+        if (jobId) qs.set('excludeId', jobId);
+        const res = await fetch(`/api/jobs/cron-preview?${qs}`);
+        if (!res.ok) {
+          setPreview(null);
+          return;
+        }
+        const body = await res.json();
+        setPreview({ next5: body.next5 ?? [], collisions: body.collisions ?? [] });
+      } catch {
+        setPreview(null);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [v.schedule, jobId]);
 
   function set<K extends keyof JobFormValues>(k: K, val: JobFormValues[K]) {
     setV((prev) => ({ ...prev, [k]: val }));
@@ -179,6 +203,39 @@ export function JobForm({
         <small style={{ color: fieldErr.schedule ? '#e66' : '#888' }}>
           {fieldErr.schedule ?? humanSchedule}
         </small>
+        {preview && preview.next5.length > 0 && (
+          <div
+            style={{
+              marginTop: 6,
+              padding: '0.5rem 0.7rem',
+              border: '1px solid #222',
+              borderRadius: 3,
+              background: '#0b0d13',
+              fontSize: '0.85em',
+            }}
+          >
+            <div style={{ color: '#9ab', marginBottom: 3 }}>Next 5 fires:</div>
+            <ul style={{ margin: 0, paddingLeft: '1.1rem', color: '#ccc' }}>
+              {preview.next5.map((t) => (
+                <li key={t}>{new Date(t).toLocaleString()}</li>
+              ))}
+            </ul>
+            {preview.collisions.length > 0 && (
+              <div
+                style={{
+                  marginTop: 6,
+                  color: '#f7d98a',
+                  borderTop: '1px solid #222',
+                  paddingTop: 5,
+                }}
+              >
+                ⚠ Collides this minute with: {preview.collisions.map((c) => c.name).join(', ')}.
+                Consider offsetting to <code>:03</code>, <code>:17</code>, or <code>:37</code> to
+                stagger.
+              </div>
+            )}
+          </div>
+        )}
       </label>
 
       <fieldset style={fs}>

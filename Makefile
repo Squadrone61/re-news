@@ -1,5 +1,6 @@
 COMPOSE      := docker compose -p re-news
 COMPOSE_MIG  := docker compose -p re-news -f docker-compose.yml -f docker-compose.migrate.yml
+COMPOSE_BAK  := docker compose -p re-news -f docker-compose.yml -f docker-compose.backup.yml
 
 .PHONY: up down migrate logs psql shell-web shell-worker backup
 
@@ -25,4 +26,5 @@ shell-worker:
 	$(COMPOSE) exec worker sh
 
 backup:
-	@echo "backup: implemented in plan 8"
+	mkdir -p ./data/backups
+	$(COMPOSE_BAK) run --rm backup

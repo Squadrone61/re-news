@@ -5,6 +5,7 @@ import type { Job } from '@prisma/client';
 import { prisma, streamLogToDb } from '@renews/shared';
 import { buildResearchPrompt } from '../prompts/research.js';
 import { RateLimitError, detectRateLimit } from './errors.js';
+import { type UsageTotals, addUsage, emptyUsage, extractUsage } from './usage.js';
 
 const RUNS_ROOT = process.env.RUNS_DIR ?? '/app/data/runs';
 const MAX_ITEMS = 25;
@@ -16,7 +17,11 @@ export type ResearchJson = {
   fetch_errors?: Array<Record<string, unknown>>;
 };
 
-export async function runResearch(runId: string, job: Job): Promise<ResearchJson> {
+export async function runResearch(
+  runId: string,
+  job: Job,
+  usage: UsageTotals = emptyUsage(),
+): Promise<ResearchJson> {
   if (process.env.SIM_RATE_LIMIT === '1') {
     throw new RateLimitError('rate_limit: simulated', new Date(Date.now() + 3600 * 1000));
   }
@@ -35,6 +40,7 @@ export async function runResearch(runId: string, job: Job): Promise<ResearchJson
         maxTurns: 40,
       },
     })) {
+      addUsage(usage, extractUsage(msg));
       await streamLogToDb(runId, 'research', msg);
     }
   } catch (e) {

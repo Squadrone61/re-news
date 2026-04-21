@@ -14,6 +14,10 @@ type Initial = {
   researchRaw: unknown;
   renderedOutput: string | null;
   stage2Json: unknown;
+  nextRunAt: string | null;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  costUsd: string | null;
   job: {
     id: string;
     name: string;
@@ -129,21 +133,12 @@ export function RunDetail({ initial }: { initial: Initial }) {
         <div style={{ marginTop: '0.5rem' }}>
           <StatusBadge status={status} />
         </div>
-        {error && (
-          <pre
-            style={{
-              background: '#2a1517',
-              border: '1px solid #d04545',
-              color: '#f7c6c6',
-              padding: '0.75rem',
-              marginTop: '0.75rem',
-              whiteSpace: 'pre-wrap',
-              borderRadius: 3,
-            }}
-          >
-            {error}
-          </pre>
-        )}
+        {error && <ErrorDisplay message={error} nextRunAt={initial.nextRunAt} />}
+        <UsageBadges
+          tokensIn={initial.tokensIn}
+          tokensOut={initial.tokensOut}
+          costUsd={initial.costUsd}
+        />
       </header>
 
       <section style={{ margin: '1rem 0', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -321,6 +316,102 @@ function Preview({
     );
   }
   return <pre style={preBlock}>{rendered}</pre>;
+}
+
+function ErrorDisplay({ message, nextRunAt }: { message: string; nextRunAt: string | null }) {
+  const match = classifyError(message);
+  const wrap: React.CSSProperties = {
+    background: '#2a1517',
+    border: '1px solid #d04545',
+    color: '#f7c6c6',
+    padding: '0.75rem',
+    marginTop: '0.75rem',
+    borderRadius: 3,
+    display: 'flex',
+    gap: '0.6rem',
+    alignItems: 'flex-start',
+  };
+  return (
+    <div style={wrap}>
+      <span style={{ fontSize: '1.3em', lineHeight: 1 }}>{match.icon}</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>{match.title}</div>
+        <div style={{ fontSize: '0.9em', opacity: 0.9, marginBottom: 4 }}>
+          {match.describe(message, nextRunAt)}
+        </div>
+        <details>
+          <summary style={{ cursor: 'pointer', color: '#f7c6c6', opacity: 0.7 }}>raw error</summary>
+          <pre style={{ whiteSpace: 'pre-wrap', margin: '0.4rem 0 0', fontSize: '0.85em' }}>
+            {message}
+          </pre>
+        </details>
+      </div>
+    </div>
+  );
+}
+
+function classifyError(msg: string): {
+  icon: string;
+  title: string;
+  describe: (raw: string, nextRunAt: string | null) => string;
+} {
+  if (msg.startsWith('rate_limit:') || /rate[_\s-]?limit/i.test(msg)) {
+    return {
+      icon: '⏳',
+      title: 'Claude rate limit hit',
+      describe: (_r, next) =>
+        next
+          ? `Window resets at ${new Date(next).toLocaleString()}. Try Re-run after that time.`
+          : 'Window resets in ~5 hours. Try Re-run after that.',
+    };
+  }
+  if (msg.startsWith('email send:')) {
+    return {
+      icon: '✉️',
+      title: 'Email send failed',
+      describe: () =>
+        'SMTP rejected the message. Check /settings for a valid Gmail user + app password, then Resend.',
+    };
+  }
+  if (msg.startsWith('stage2 validation failed')) {
+    return {
+      icon: '⚠️',
+      title: 'Stage 2 output invalid',
+      describe: () =>
+        'The summary model produced JSON that failed length or schema checks after one retry. Re-run to try again — if it repeats, loosen Max items or tighten the base prompt.',
+    };
+  }
+  return {
+    icon: '✖',
+    title: 'Run failed',
+    describe: (raw) => raw,
+  };
+}
+
+function UsageBadges({
+  tokensIn,
+  tokensOut,
+  costUsd,
+}: {
+  tokensIn: number | null;
+  tokensOut: number | null;
+  costUsd: string | null;
+}) {
+  if (tokensIn == null && tokensOut == null && costUsd == null) return null;
+  const chip: React.CSSProperties = {
+    border: '1px solid #333',
+    borderRadius: 3,
+    padding: '0.15rem 0.5rem',
+    color: '#9ab',
+    fontSize: '0.85em',
+  };
+  return (
+    <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+      {tokensIn != null && <span style={chip}>in: {tokensIn.toLocaleString()}</span>}
+      {tokensOut != null && <span style={chip}>out: {tokensOut.toLocaleString()}</span>}
+      {costUsd != null && <span style={chip}>${Number(costUsd).toFixed(4)}</span>}
+    </div>
+  );
 }
 
 function StatusBadge({ status }: { status: string }) {

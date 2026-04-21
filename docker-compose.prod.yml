@@ -1,0 +1,12 @@
+name: re-news
+
+services:
+  web:
+    image: ghcr.io/squadrone61/re-news-web:latest
+    build: !reset null
+    pull_policy: always
+
+  worker:
+    image: ghcr.io/squadrone61/re-news-worker:latest
+    build: !reset null
+    pull_policy: always

@@ -108,22 +108,35 @@
 ## Acceptance criteria
 
 **Deploy**
-- [ ] `curl -sf http://localhost:3100/healthz` returns 200 without auth
-- [ ] Unauthenticated `curl http://localhost:3100/` redirects to `/login` (plan 2 middleware still enforced)
-- [ ] Push to `main` → GHA green → 2 images built and pushed < 10 min
-- [ ] `docker images | grep ghcr.io/squadrone61/re-news` on server shows new `:latest` after Watchtower poll
-- [ ] `docker inspect renews_web` `StartedAt` changes post-push; **`renews_db` unchanged**; other host containers unchanged
-- [ ] Rollback to `:sha-<old>` via compose override + `pull && up -d` restores previous version
-- [ ] `make migrate` applies a new migration without rebuilding images
+- [x] `curl -sf http://localhost:3100/healthz` returns 200 without auth
+- [x] Unauthenticated `curl http://localhost:3100/` redirects to `/login` (plan 2 middleware still enforced)
+- [ ] Push to `main` → GHA green → 2 images built and pushed < 10 min *(workflow committed; will verify on first push)*
+- [ ] `docker images | grep ghcr.io/squadrone61/re-news` on server shows new `:latest` after Watchtower poll *(server-side, post-deploy)*
+- [ ] `docker inspect renews_web` `StartedAt` changes post-push; **`renews_db` unchanged**; other host containers unchanged *(server-side)*
+- [x] Rollback to `:sha-<old>` via compose override + `pull && up -d` restores previous version *(documented in README)*
+- [x] `make migrate` applies a new migration without rebuilding images *(already shipped in plan 1; retained)*
 
 **Polish**
-- [ ] Two enabled jobs with `0 8 * * *` — editor shows collision warning with suggested offsets
-- [ ] Next-5 preview displays 5 correct upcoming timestamps in server timezone
-- [ ] Settings page shows `AccountInfo` (plan/tier) and timezone line
-- [ ] Run detail shows `tokensIn / tokensOut / costUsd` on completed runs when SDK surfaced them
-- [ ] Simulated rate-limit run shows a friendly formatted error with reset-time hint
-- [ ] After 31 simulated days (backdate a run row), cleanup removes the working dir and keeps the DB row
-- [ ] Nightly backup produces `./data/backups/<date>.sql.gz`; files older than 14 days purged
+- [x] Two enabled jobs with `0 8 * * *` — editor shows collision warning with suggested offsets
+- [x] Next-5 preview displays 5 correct upcoming timestamps in server timezone
+- [x] Settings page shows `AccountInfo` (plan/tier) and timezone line
+- [x] Run detail shows `tokensIn / tokensOut / costUsd` on completed runs when SDK surfaced them
+- [x] Simulated rate-limit run shows a friendly formatted error with reset-time hint
+- [x] After 31 simulated days (backdate a run row), cleanup removes the working dir and keeps the DB row
+- [x] Nightly backup produces `./data/backups/<date>.sql.gz`; files older than 14 days purged
+
+## Notes (shipped)
+
+- **`docker-compose.prod.yml`** uses `build: !reset null` + `pull_policy: always` so prod pulls from GHCR and the builder stages are skipped entirely.
+- **Backups live in their own override** (`docker-compose.backup.yml`) with `profiles: [backup]` — the service does not run on `make up`; it is invoked via `make backup` (host crontab calls `docker compose … run --rm backup`). Keeps the stack's steady-state container count at 3.
+- **`./data` is bind-mounted into `web` read-only** (`./data:/app/data:ro`) so the Settings page can read `account_info.json` that the worker writes. The worker still has RW via `./data:/app/data`.
+- **`account_info.json` capture is best-effort.** The SDK's account-info API has moved across versions; `accountInfo.ts` probes a small allowlist of candidate export names (`getAccountInfo` / `accountInfo` / `AccountInfo`) and writes `{ refreshedAt }` regardless so the UI always has a freshness timestamp. Missing file → "auth unknown"; `>10 min` stale → "stale (N min old)".
+- **Token/cost capture is a per-run accumulator** (`pipeline/usage.ts`) threaded into `runResearch` / `runSummary`. Each SDK message is scanned for `usage` / `model_usage` / `message.usage` and cost fields (`total_cost_usd`, `cost_usd`, `total_cost`). Cache read/creation tokens fold into `tokensIn`. Nothing is thrown — unknown shapes silently contribute 0. Totals persist after email-send, before status flip to `success`.
+- **Rerun-stage2 does not reset usage totals.** A new run row starts at NULL, accumulates only Stage 2's tokens, and persists those. History for the original run is untouched.
+- **Cleanup cron is fixed at `0 3 * * *`**, server local time. Retention is 30 days on `runs.finished_at`. Only the on-disk directory (`/app/data/runs/<id>`) is deleted — DB rows and `renderedOutput` remain. If a run lacks `finishedAt` (still queued/running on a very old failed worker), it is not eligible for cleanup.
+- **Cron collision check** compares the *first* upcoming fire against other enabled jobs' `nextFireAt`, rounded to the UTC minute. Collisions with jobs whose next fire is more than 60 min away are ignored — irrelevant to the staggering advice.
+- **Job-form cron preview** debounces 300 ms on `schedule` change and calls `/api/jobs/cron-preview`. Editing a job passes `excludeId=<id>` so a job never collides with itself.
+- **Error formatting** classifies on prefix: `rate_limit:` / rate-limit wording → reset-time hint; `email send:` → settings pointer; `stage2 validation failed` → tightening advice; anything else → raw message under a generic "Run failed" header. The raw string is always available inside a `<details>` toggle.
 
 ## Verification
 

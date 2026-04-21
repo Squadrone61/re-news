@@ -1,0 +1,25 @@
+name: re-news
+
+services:
+  backup:
+    image: postgres:16-alpine
+    container_name: renews_backup
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      PGPASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./data/backups:/backups
+    networks: [renews_net]
+    profiles: ["backup"]
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        set -e;
+        mkdir -p /backups;
+        f=/backups/$$(date -u +%F).sql.gz;
+        echo "[backup] writing $$f";
+        pg_dump -h db -U newsletter -d newsletter | gzip > $$f;
+        find /backups -type f -name '*.sql.gz' -mtime +14 -print -delete;
+        echo "[backup] done";

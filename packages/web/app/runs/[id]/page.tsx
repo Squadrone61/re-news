@@ -29,6 +29,10 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
     researchRaw: run.researchRaw,
     renderedOutput: run.renderedOutput,
     stage2Json: run.stage2Json,
+    nextRunAt: run.nextRunAt?.toISOString() ?? null,
+    tokensIn: run.tokensIn,
+    tokensOut: run.tokensOut,
+    costUsd: run.costUsd ? run.costUsd.toString() : null,
     job: {
       id: run.job.id,
       name: run.job.name,
