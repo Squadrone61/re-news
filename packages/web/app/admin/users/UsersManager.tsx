@@ -1,6 +1,7 @@
 'use client';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useToast } from '../../_components/Toaster';
 
 type U = { id: string; email: string; isAdmin: boolean; createdAt: string };
 
@@ -11,6 +12,7 @@ export function UsersManager({ meId, initial }: { meId: string; initial: U[] }) 
   const [password, setPassword] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const toast = useToast();
 
   async function createUser(e: React.FormEvent) {
     e.preventDefault();
@@ -23,6 +25,7 @@ export function UsersManager({ meId, initial }: { meId: string; initial: U[] }) 
     if (!res.ok) {
       const b = await res.json().catch(() => ({}));
       setErr(b.error ?? 'create failed');
+      toast.error(`Create failed: ${b.error ?? 'create failed'}`);
       return;
     }
     const created = await res.json();
@@ -30,6 +33,7 @@ export function UsersManager({ meId, initial }: { meId: string; initial: U[] }) 
     setEmail('');
     setPassword('');
     setIsAdmin(false);
+    toast.success('User created');
     router.refresh();
   }
 
@@ -41,10 +45,11 @@ export function UsersManager({ meId, initial }: { meId: string; initial: U[] }) 
     });
     if (!res.ok) {
       const b = await res.json().catch(() => ({}));
-      alert(b.error ?? 'update failed');
+      toast.error(`Update failed: ${b.error ?? 'update failed'}`);
       return;
     }
     setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, isAdmin: !u.isAdmin } : x)));
+    toast.success(u.isAdmin ? 'Admin removed' : 'Admin granted');
   }
 
   async function resetPassword(u: U) {
@@ -57,8 +62,10 @@ export function UsersManager({ meId, initial }: { meId: string; initial: U[] }) 
     });
     if (!res.ok) {
       const b = await res.json().catch(() => ({}));
-      alert(b.error ?? 'reset failed');
+      toast.error(`Reset failed: ${b.error ?? 'reset failed'}`);
+      return;
     }
+    toast.success('Password reset');
   }
 
   async function del(u: U) {
@@ -66,10 +73,11 @@ export function UsersManager({ meId, initial }: { meId: string; initial: U[] }) 
     const res = await fetch(`/api/admin/users/${u.id}`, { method: 'DELETE' });
     if (!res.ok) {
       const b = await res.json().catch(() => ({}));
-      alert(b.error ?? 'delete failed');
+      toast.error(`Delete failed: ${b.error ?? 'delete failed'}`);
       return;
     }
     setUsers((prev) => prev.filter((x) => x.id !== u.id));
+    toast.success('User deleted');
     router.refresh();
   }
 

@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useToast } from '../_components/Toaster';
 
 type Initial = {
   gmailUser: string;
@@ -31,13 +32,10 @@ export function SettingsForm({ initial }: { initial: Initial }) {
   const [defaultModelResearch, setDMR] = useState(initial.defaultModelResearch);
   const [defaultModelSummary, setDMS] = useState(initial.defaultModelSummary);
   const [workerConcurrency, setWC] = useState(initial.workerConcurrency);
-  const [status, setStatus] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const toast = useToast();
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    setStatus(null);
-    setErr(null);
     const body: Record<string, unknown> = {
       gmailUser,
       senderName,
@@ -53,10 +51,10 @@ export function SettingsForm({ initial }: { initial: Initial }) {
     });
     if (!res.ok) {
       const b = await res.json().catch(() => ({}));
-      setErr(b.error ?? 'save failed');
+      toast.error(`Save failed: ${b.error ?? 'save failed'}`);
       return;
     }
-    setStatus('Saved.');
+    toast.success('Settings saved');
     setGmailAppPassword('');
   }
 
@@ -133,8 +131,6 @@ export function SettingsForm({ initial }: { initial: Initial }) {
         >
           Save
         </button>
-        {status && <span style={{ color: '#4ade80' }}>{status}</span>}
-        {err && <span style={{ color: '#f87171' }}>{err}</span>}
       </div>
     </form>
   );
