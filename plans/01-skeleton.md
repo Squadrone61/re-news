@@ -62,17 +62,17 @@
 
 ## Acceptance criteria
 
-- [ ] `pnpm install` on Linux server succeeds; `pnpm-lock.yaml` committed
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` all exit 0
-- [ ] `pnpm --filter @renews/web build` succeeds
-- [ ] `make migrate` applies the initial migration (starts from empty DB, exits 0, `\dt` lists `users`, `jobs`, `runs`, `run_logs`, `settings`)
-- [ ] `make up` brings all 3 app containers Up; `docker compose -p re-news ps` shows `db` healthy before `web`/`worker` start
-- [ ] `docker compose -p re-news logs worker` contains a line confirming `/root/.claude` is mounted and writable
-- [ ] `curl -sf http://<server-ip>:3100` returns HTML containing "re-news"
-- [ ] `curl -sf http://<server-ip>:3100/healthz` returns `{"ok":true,...}`
-- [ ] `docker ps --format '{{.Names}}' | grep -v '^renews_'` lists the user's pre-existing containers, same uptime as before
-- [ ] `docker network ls | grep renews_net` exists; no other networks touched
-- [ ] Existing Watchtower container now watches `renews_web/worker` (labels picked up); other watched containers unchanged
+- [x] `pnpm install` on Linux server succeeds; `pnpm-lock.yaml` committed
+- [x] `pnpm lint && pnpm typecheck && pnpm test` all exit 0
+- [x] `pnpm --filter @renews/web build` succeeds
+- [x] `make migrate` applies the initial migration (starts from empty DB, exits 0, `\dt` lists `users`, `jobs`, `runs`, `run_logs`, `settings`)
+- [x] `make up` brings all 3 app containers Up; `docker compose -p re-news ps` shows `db` healthy before `web`/`worker` start
+- [x] `docker compose -p re-news logs worker` contains a line confirming `/root/.claude` is mounted and writable
+- [x] `curl -sf http://<server-ip>:3100` returns HTML containing "re-news"
+- [x] `curl -sf http://<server-ip>:3100/healthz` returns `{"ok":true,...}`
+- [x] `docker ps --format '{{.Names}}' | grep -v '^renews_'` lists the user's pre-existing containers, same uptime as before
+- [x] `docker network ls | grep renews_net` exists; no other networks touched
+- [x] Existing Watchtower container now watches `renews_web/worker` (labels picked up); other watched containers unchanged
 
 ## Verification
 
