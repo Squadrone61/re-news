@@ -70,19 +70,19 @@
 
 ## Acceptance criteria
 
-- [ ] Fresh DB → visiting `/` redirects to `/setup`; completing setup creates the admin and logs them in
-- [ ] Admin creates alice@…; alice logs in; sees empty jobs list; admin's jobs are NOT visible
-- [ ] `recipient_email` on the new-job form pre-fills with the logged-in user's email
-- [ ] Create a job via UI with 2 sources + `0 8 * * *`; appears in list; schedule shows "At 08:00 AM"; row has `user_id = alice.id`
-- [ ] Edit + save same job; `updated_at` moves forward
-- [ ] Toggle enabled via table; DB row flips
-- [ ] Delete job; its runs cascade-delete
-- [ ] Invalid cron → 400 with the documented shape; UI surfaces it inline
-- [ ] `POST /api/jobs/:id/run` returns `{runId}`; row exists in `runs` with `status=queued` (remains queued since worker isn't wired yet)
-- [ ] Alice cannot hit `/admin/users` (403) or read admin's job at `/api/jobs/:adminJobId` (404)
-- [ ] Logout clears cookie; next request redirects to `/login`
-- [ ] `password_hash` is argon2; never returned by any API response
-- [ ] `pnpm test` green
+- [x] Fresh DB → visiting `/` redirects to `/setup`; completing setup creates the admin and logs them in
+- [x] Admin creates alice@…; alice logs in; sees empty jobs list; admin's jobs are NOT visible
+- [x] `recipient_email` on the new-job form pre-fills with the logged-in user's email
+- [x] Create a job via UI with 2 sources + `0 8 * * *`; appears in list; schedule shows "At 08:00 AM"; row has `user_id = alice.id`
+- [x] Edit + save same job; `updated_at` moves forward
+- [x] Toggle enabled via table; DB row flips
+- [x] Delete job; its runs cascade-delete
+- [x] Invalid cron → 400 with the documented shape; UI surfaces it inline
+- [x] `POST /api/jobs/:id/run` returns `{runId}`; row exists in `runs` with `status=queued` (remains queued since worker isn't wired yet)
+- [x] Alice cannot hit `/admin/users` (403) or read admin's job at `/api/jobs/:adminJobId` (404)
+- [x] Logout clears cookie; next request redirects to `/login`
+- [x] `password_hash` is argon2; never returned by any API response
+- [x] `pnpm test` green
 
 ## Verification
 

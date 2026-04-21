@@ -12,9 +12,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         style={{
           fontFamily: 'system-ui, sans-serif',
           margin: 0,
-          padding: '2rem',
           background: '#0b0c0f',
           color: '#e6e6e6',
+          minHeight: '100vh',
         }}
       >
         {children}

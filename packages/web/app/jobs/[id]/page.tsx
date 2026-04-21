@@ -1,0 +1,48 @@
+import { getCurrentUser } from '@/src/lib/session';
+import { prisma } from '@renews/shared';
+import Link from 'next/link';
+import { notFound, redirect } from 'next/navigation';
+import { JobForm, type JobFormValues } from '../../_components/JobForm';
+import { Topbar } from '../../_components/Topbar';
+
+export const dynamic = 'force-dynamic';
+
+type Source = { url: string; hint?: string; needsBrowser?: boolean };
+
+export default async function EditJobPage({ params }: { params: Promise<{ id: string }> }) {
+  const me = await getCurrentUser();
+  if (!me) redirect('/login');
+  const { id } = await params;
+  const job = await prisma.job.findUnique({ where: { id } });
+  if (!job) notFound();
+  if (job.userId !== me.id && !me.isAdmin) notFound();
+
+  const initial: JobFormValues = {
+    name: job.name,
+    enabled: job.enabled,
+    schedule: job.schedule,
+    sources: (job.sources as unknown as Source[]) ?? [],
+    topic: job.topic,
+    basePrompt: job.basePrompt,
+    recipientEmail: job.recipientEmail,
+    outputFormat: job.outputFormat as JobFormValues['outputFormat'],
+    maxItems: job.maxItems,
+    modelResearch: job.modelResearch,
+    modelSummary: job.modelSummary,
+    monthlyBudget: job.monthlyBudget,
+    minIntervalMinutes: job.minIntervalMinutes,
+  };
+
+  return (
+    <>
+      <Topbar email={me.email} isAdmin={me.isAdmin} />
+      <main style={{ padding: '1.5rem' }}>
+        <Link href="/" style={{ color: '#9ab' }}>
+          ← Back
+        </Link>
+        <h1>{job.name}</h1>
+        <JobForm initial={initial} jobId={job.id} userEmail={me.email} />
+      </main>
+    </>
+  );
+}
