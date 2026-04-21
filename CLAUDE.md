@@ -54,7 +54,7 @@ Monorepo layout under `packages/{web,worker,shared}` with Prisma schema at the r
 - `runs` has **separate** columns for stage-2 JSON (`stage2_json jsonb`) and rendered output (`rendered_output text`). One column per lifecycle meaning; don't overload.
 
 **Scheduling & time.**
-- Do **not** set `TZ` in Compose — use server local time. Display the resolved timezone on the Settings page.
+- Do **not** set `TZ` env in Compose — mount `/etc/localtime:/etc/localtime:ro` + `/etc/timezone:/etc/timezone:ro` into `web` and `worker` so they inherit the host's zone. Node base images default to UTC; without this mount `0 8 * * *` fires at 08:00 UTC, not 08:00 wall-clock, and the cron-preview UI shows times that look off by the host's UTC offset. `db` does **not** need the mount (Postgres stores timestamps with explicit offset). Settings page prints the resolved zone.
 - Job editor warns when a new schedule collides at the same minute as an existing enabled job; suggests `:03`/`:17`/`:37` staggering (plan 8).
 
 **Stale-run recovery.**

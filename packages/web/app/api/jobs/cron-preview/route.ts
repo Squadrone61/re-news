@@ -18,11 +18,26 @@ export async function GET(req: Request) {
     }
 
     const it = CronExpressionParser.parse(schedule, { currentDate: new Date() });
-    const next5: string[] = [];
-    for (let i = 0; i < 5; i++) next5.push(it.next().toDate().toISOString());
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const fmt = new Intl.DateTimeFormat(undefined, {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZoneName: 'short',
+    });
 
-    const first = new Date(next5[0]!);
-    const firstMinute = `${first.getUTCFullYear()}-${first.getUTCMonth()}-${first.getUTCDate()}T${first.getUTCHours()}:${first.getUTCMinutes()}`;
+    const next5: Array<{ iso: string; formatted: string }> = [];
+    for (let i = 0; i < 5; i++) {
+      const d = it.next().toDate();
+      next5.push({ iso: d.toISOString(), formatted: fmt.format(d) });
+    }
+
+    const first = new Date(next5[0]!.iso);
+    const firstMinuteKey = `${first.getTime() - (first.getSeconds() * 1000 + first.getMilliseconds())}`;
     const sixtyMinFromNow = new Date(Date.now() + 60 * 60 * 1000);
 
     const candidateJobs = await prisma.job.findMany({
@@ -39,11 +54,11 @@ export async function GET(req: Request) {
       const n = nextFireAt(j.schedule);
       if (!n) continue;
       if (n > sixtyMinFromNow) continue;
-      const key = `${n.getUTCFullYear()}-${n.getUTCMonth()}-${n.getUTCDate()}T${n.getUTCHours()}:${n.getUTCMinutes()}`;
-      if (key === firstMinute) collisions.push({ jobId: j.id, name: j.name });
+      const key = `${n.getTime() - (n.getSeconds() * 1000 + n.getMilliseconds())}`;
+      if (key === firstMinuteKey) collisions.push({ jobId: j.id, name: j.name });
     }
 
-    return Response.json({ next5, collisions });
+    return Response.json({ next5, collisions, timezone });
   } catch (e) {
     return errorResponse(e);
   }

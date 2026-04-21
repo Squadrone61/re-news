@@ -75,8 +75,9 @@ export function JobForm({
   }, [v.schedule]);
 
   const [preview, setPreview] = useState<{
-    next5: string[];
+    next5: { iso: string; formatted: string }[];
     collisions: { jobId: string; name: string }[];
+    timezone: string;
   } | null>(null);
 
   useEffect(() => {
@@ -90,7 +91,11 @@ export function JobForm({
           return;
         }
         const body = await res.json();
-        setPreview({ next5: body.next5 ?? [], collisions: body.collisions ?? [] });
+        setPreview({
+          next5: body.next5 ?? [],
+          collisions: body.collisions ?? [],
+          timezone: body.timezone ?? '',
+        });
       } catch {
         setPreview(null);
       }
@@ -214,10 +219,12 @@ export function JobForm({
               fontSize: '0.85em',
             }}
           >
-            <div style={{ color: '#9ab', marginBottom: 3 }}>Next 5 fires:</div>
+            <div style={{ color: '#9ab', marginBottom: 3 }}>
+              Next 5 fires{preview.timezone && ` (${preview.timezone})`}:
+            </div>
             <ul style={{ margin: 0, paddingLeft: '1.1rem', color: '#ccc' }}>
               {preview.next5.map((t) => (
-                <li key={t}>{new Date(t).toLocaleString()}</li>
+                <li key={t.iso}>{t.formatted}</li>
               ))}
             </ul>
             {preview.collisions.length > 0 && (
