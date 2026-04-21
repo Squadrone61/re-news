@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { ToasterProvider } from './_components/Toaster';
 
 export const metadata = {
   title: 're-news',
@@ -17,7 +18,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           minHeight: '100vh',
         }}
       >
-        {children}
+        <ToasterProvider>{children}</ToasterProvider>
       </body>
     </html>
   );

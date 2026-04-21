@@ -2,6 +2,7 @@
 import cronstrue from 'cronstrue';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import { useToast } from './Toaster';
 
 type Source = { url: string; hint?: string; needsBrowser?: boolean };
 
@@ -42,6 +43,7 @@ export function JobForm({
   defaults?: { modelResearch: string; modelSummary: string };
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [v, setV] = useState<JobFormValues>(
     initial ?? {
       name: '',
@@ -137,7 +139,9 @@ export function JobForm({
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       if (body.field) setFieldErr({ [body.field]: body.error ?? 'invalid' });
-      setErr(body.error ?? `save failed (${res.status})`);
+      const msg = body.error ?? `save failed (${res.status})`;
+      setErr(msg);
+      toast.error(`Save failed: ${msg}`);
       setBusy(false);
       return;
     }
@@ -146,7 +150,7 @@ export function JobForm({
       await fetch(`/api/jobs/${saved.id}/run`, { method: 'POST' });
     }
     setBusy(false);
-    router.push('/');
+    router.push('/?toast=job_saved');
     router.refresh();
   }
 
@@ -157,10 +161,12 @@ export function JobForm({
     const res = await fetch(`/api/jobs/${jobId}`, { method: 'DELETE' });
     setBusy(false);
     if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      toast.error(`Delete failed: ${body.error ?? res.statusText}`);
       setErr('delete failed');
       return;
     }
-    router.push('/');
+    router.push('/?toast=job_deleted');
     router.refresh();
   }
 

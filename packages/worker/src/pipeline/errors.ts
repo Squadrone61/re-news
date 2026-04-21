@@ -51,3 +51,10 @@ function parseResetTime(err: unknown, msg: string): Date | null {
   }
   return null;
 }
+
+export class CancelledError extends Error {
+  constructor() {
+    super('cancelled by user');
+    this.name = 'CancelledError';
+  }
+}

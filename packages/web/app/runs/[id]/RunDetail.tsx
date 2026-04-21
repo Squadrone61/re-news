@@ -2,6 +2,8 @@
 import { marked } from 'marked';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { StopRunButton } from '../../_components/StopRunButton';
+import { useToast } from '../../_components/Toaster';
 
 type Initial = {
   id: string;
@@ -43,7 +45,6 @@ export function RunDetail({ initial }: { initial: Initial }) {
   const [error, setError] = useState<string | null>(initial.error);
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: runId-scoped effect
   useEffect(() => {
@@ -59,7 +60,7 @@ export function RunDetail({ initial }: { initial: Initial }) {
       };
       setStatus(data.status);
       if (data.error !== undefined) setError(data.error ?? null);
-      if (['success', 'failed', 'deferred'].includes(data.status)) {
+      if (['success', 'failed', 'deferred', 'cancelled'].includes(data.status)) {
         // refresh server data (researchRaw / rendered / stage2Json) on terminal status
         router.refresh();
       }
@@ -79,24 +80,25 @@ export function RunDetail({ initial }: { initial: Initial }) {
     return m;
   }, [logs]);
 
+  const toast = useToast();
+
   async function action(path: string, label: string) {
     setBusy(label);
-    setNotice(null);
     try {
       const res = await fetch(path, { method: 'POST' });
       const body = (await res.json().catch(() => ({}))) as { runId?: string; error?: string };
       if (!res.ok) {
-        setNotice(`${label} failed: ${body.error ?? res.statusText}`);
+        toast.error(`${label} failed: ${body.error ?? res.statusText}`);
       } else if (body.runId) {
-        setNotice(`${label} queued → new run ${body.runId.slice(0, 8)}…`);
+        toast.success(`${label} queued`);
         setTimeout(() => {
           window.location.href = `/runs/${body.runId}`;
         }, 400);
       } else {
-        setNotice(`${label} ok`);
+        toast.success(`${label} ok`);
       }
     } catch (e) {
-      setNotice(`${label} error: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(`${label} error: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(null);
     }
@@ -130,8 +132,9 @@ export function RunDetail({ initial }: { initial: Initial }) {
             </span>
           )}
         </div>
-        <div style={{ marginTop: '0.5rem' }}>
+        <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <StatusBadge status={status} />
+          <StopRunButton runId={initial.id} status={status} />
         </div>
         {error && <ErrorDisplay message={error} nextRunAt={initial.nextRunAt} />}
         <UsageBadges
@@ -171,7 +174,6 @@ export function RunDetail({ initial }: { initial: Initial }) {
         >
           {busy === 'Re-run full' ? 'Queuing…' : 'Re-run full'}
         </button>
-        {notice && <span style={{ marginLeft: '0.5rem', color: '#9ab' }}>{notice}</span>}
       </section>
 
       <h2 style={h2}>Logs</h2>
@@ -424,7 +426,9 @@ function StatusBadge({ status }: { status: string }) {
           ? '#2a6fdb'
           : status === 'deferred'
             ? '#c08a2e'
-            : '#777';
+            : status === 'cancelled'
+              ? '#888'
+              : '#777';
   return (
     <span
       style={{

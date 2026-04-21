@@ -3,6 +3,7 @@ import { prisma } from '@renews/shared';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Topbar } from '../_components/Topbar';
+import { RunsTableActions } from './_RunsTableActions';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,9 +76,7 @@ export default async function RunsListPage({
                     </td>
                     <td style={td}>{dur}</td>
                     <td style={{ ...td, textAlign: 'right' }}>
-                      <Link href={`/runs/${r.id}`} style={btn}>
-                        Open
-                      </Link>
+                      <RunsTableActions runId={r.id} status={r.status} />
                     </td>
                   </tr>
                 );
@@ -115,7 +114,9 @@ function StatusBadge({ status }: { status: string }) {
           ? '#2a6fdb'
           : status === 'deferred'
             ? '#c08a2e'
-            : '#777';
+            : status === 'cancelled'
+              ? '#888'
+              : '#777';
   return (
     <span
       style={{
