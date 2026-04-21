@@ -286,11 +286,13 @@ export function JobForm({
       <label style={lbl}>
         Base prompt <small style={{ color: '#888' }}>({v.basePrompt.length} chars)</small>
         <textarea
-          style={{ ...inp, minHeight: 120, fontFamily: 'inherit' }}
+          style={{ ...inp, minHeight: 140, fontFamily: 'inherit' }}
           value={v.basePrompt}
           onChange={(e) => set('basePrompt', e.target.value)}
+          placeholder={BASE_PROMPT_PLACEHOLDER}
           required
         />
+        <BasePromptHints />
       </label>
 
       <label style={lbl}>
@@ -398,6 +400,58 @@ export function JobForm({
         )}
       </div>
     </form>
+  );
+}
+
+const BASE_PROMPT_PLACEHOLDER =
+  'e.g. A daily digest for my family about Turkish news. Categories: Son dakika, Siyaset, Spor, Ekonomi. All content in Turkish. Bodies around 80 words, 2-3 sentences. Always cite the source via link.';
+
+function BasePromptHints() {
+  return (
+    <details style={{ marginTop: 4 }}>
+      <summary style={{ cursor: 'pointer', color: '#9ab', fontSize: '0.85em' }}>
+        Tips — what you can tell the summarizer
+      </summary>
+      <ul
+        style={{
+          margin: '0.4rem 0 0 1.1rem',
+          padding: 0,
+          color: '#888',
+          fontSize: '0.85em',
+          lineHeight: 1.6,
+        }}
+      >
+        <li>
+          <strong>Audience / tone</strong>: "for tech-savvy family members" · "casual, dry humor"
+        </li>
+        <li>
+          <strong>Length per item</strong>: "bodies ~80 words, 2-3 sentences" · "short — one
+          sentence each"
+        </li>
+        <li>
+          <strong>Categories</strong>: "categories: Politics, Sports, Economy, Breaking" — each item
+          is tagged and the newsletter groups by section
+        </li>
+        <li>
+          <strong>Language</strong>: "all content in Turkish" · "write in plain English"
+        </li>
+        <li>
+          <strong>Ordering</strong>: "most important first" · "breaking news at the top"
+        </li>
+        <li>
+          <strong>Filters</strong>: "skip sports unless a Turkish athlete won something" · "only
+          items directly about inflation or rates"
+        </li>
+        <li>
+          <strong>Sources</strong>: "always include a source link" (already the default — state it
+          only if you want emphasis)
+        </li>
+      </ul>
+      <p style={{ margin: '0.4rem 0 0', color: '#888', fontSize: '0.85em' }}>
+        The <code>Max items</code> field below is the hard cap — a budget on research cost. The
+        prompt above controls everything else (length, tone, structure).
+      </p>
+    </details>
   );
 }
 

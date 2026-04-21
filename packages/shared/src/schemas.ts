@@ -84,11 +84,11 @@ export function validateLengths(p: StageTwo, maxItems: number): void {
   if (p.items.length > maxItems) {
     throw new Error(`too many items (${p.items.length} > ${maxItems})`);
   }
-  for (const it of p.items) {
-    const words = it.body.trim().split(/\s+/).filter(Boolean).length;
-    if (words > 50) throw new Error(`item body too long (${words} words)`);
-  }
   if (p.subject.length > 70) throw new Error('subject too long');
+  // Body length is intentionally NOT enforced here — the user's base prompt
+  // drives per-item length. The Stage 2 prompt still asks the model to keep
+  // newsletters reasonable, but length is a stylistic choice, not a correctness
+  // gate, so we don't burn retries on a 60-word body.
 }
 
 export const SettingsInput = z
