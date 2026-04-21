@@ -3,8 +3,13 @@ import { constants, access, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { logger } from '@renews/shared';
+import { tick } from './poll.js';
+import { reconcile, stopAll } from './registry.js';
+import { staleRecovery } from './staleRecovery.js';
 
 const CLAUDE_DIR = '/root/.claude';
+const POLL_MS = 5_000;
+const RECONCILE_MS = 60_000;
 
 async function verifyClaudeMount(): Promise<void> {
   try {
@@ -26,12 +31,22 @@ async function verifyClaudeMount(): Promise<void> {
 }
 
 let shuttingDown = false;
+let pollTimer: NodeJS.Timeout | null = null;
+let reconcileTimer: NodeJS.Timeout | null = null;
+
 function installSignalHandlers(): void {
-  const shutdown = (sig: NodeJS.Signals) => {
+  const shutdown = async (sig: NodeJS.Signals) => {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.info(`received ${sig}, shutting down`);
-    setTimeout(() => process.exit(0), 100).unref();
+    if (pollTimer) clearInterval(pollTimer);
+    if (reconcileTimer) clearInterval(reconcileTimer);
+    try {
+      await stopAll();
+    } catch (err) {
+      logger.warn('stopAll failed during shutdown:', err);
+    }
+    setTimeout(() => process.exit(0), 200).unref();
   };
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
@@ -41,11 +56,21 @@ async function main(): Promise<void> {
   logger.info('worker booted');
   installSignalHandlers();
   await verifyClaudeMount();
-  // Idle heartbeat — plan 3 replaces this with the real loop.
-  // Ref'd timer keeps the event loop alive until SIGTERM/SIGINT.
-  setInterval(() => {
-    if (!shuttingDown) logger.debug('idle');
-  }, 30_000);
+
+  await staleRecovery();
+  await reconcile();
+
+  reconcileTimer = setInterval(() => {
+    if (shuttingDown) return;
+    reconcile().catch((err) => logger.error('reconcile failed:', err));
+  }, RECONCILE_MS);
+
+  pollTimer = setInterval(() => {
+    if (shuttingDown) return;
+    tick().catch((err) => logger.error('poll tick failed:', err));
+  }, POLL_MS);
+
+  logger.info(`worker running (poll=${POLL_MS}ms, reconcile=${RECONCILE_MS}ms)`);
 }
 
 main().catch((err) => {

@@ -22,6 +22,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
+    "@testcontainers/postgresql": "^11.14.0",
     "@types/node": "^20.12.12",
     "@types/supertest": "^7.2.0",
     "prisma": "^5.22.0",
