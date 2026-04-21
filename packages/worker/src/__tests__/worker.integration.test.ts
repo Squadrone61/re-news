@@ -215,12 +215,16 @@ describe('poll.tick (pipeline)', () => {
     expect(logs.some((l) => l.stage === 'research' && /^result: /.test(l.message))).toBe(true);
   });
 
-  it('fails the run when research.json is missing', async () => {
+  it('fails the run when research.json is missing (after retries exhausted)', async () => {
     const job = await createJob();
     const run = await prisma.run.create({ data: { jobId: job.id, status: 'queued' } });
     sdkBehavior = { messages: [], researchJson: null };
 
-    await tick();
+    // 3 attempts: each throws; clear nextRunAt between attempts so tick picks it up.
+    for (let i = 0; i < 3; i++) {
+      await tick();
+      await prisma.run.update({ where: { id: run.id }, data: { nextRunAt: null } });
+    }
 
     const done = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
     expect(done.status).toBe('failed');
@@ -300,6 +304,130 @@ describe('poll.tick (pipeline)', () => {
       where: { runId: run.id, stage: 'sys' },
     });
     expect(sysLogs.filter((l) => l.message.startsWith('research_done:'))).toHaveLength(1);
+  });
+});
+
+describe('truncation warnings', () => {
+  it('emits warn sys log when items > 25 or content > 800', async () => {
+    const job = await createJob();
+    const run = await prisma.run.create({ data: { jobId: job.id, status: 'queued' } });
+    const longContent = 'x'.repeat(1200);
+    sdkBehavior = {
+      messages: [],
+      researchJson: {
+        items: Array.from({ length: 30 }, (_, i) => ({
+          source: 's',
+          title: `t${i}`,
+          url: `https://e.co/${i}`,
+          content: longContent,
+        })),
+        fetch_errors: [],
+      },
+    };
+
+    await tick();
+
+    const logs = await prisma.runLog.findMany({ where: { runId: run.id } });
+    expect(
+      logs.some(
+        (l) => l.stage === 'sys' && l.level === 'warn' && /truncated items to 25/.test(l.message),
+      ),
+    ).toBe(true);
+    expect(
+      logs.some(
+        (l) =>
+          l.stage === 'sys' && l.level === 'warn' && /truncated content .* to 800/.test(l.message),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('hardening: rate-limit', () => {
+  it('marks run deferred with nextRunAt on RateLimitError; no retry', async () => {
+    process.env.SIM_RATE_LIMIT = '1';
+    try {
+      const job = await createJob();
+      const run = await prisma.run.create({ data: { jobId: job.id, status: 'queued' } });
+
+      await tick();
+
+      const done = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
+      expect(done.status).toBe('deferred');
+      expect(done.attempt).toBe(0);
+      expect(done.nextRunAt).toBeInstanceOf(Date);
+      expect(done.error).toMatch(/rate_limit/);
+    } finally {
+      process.env.SIM_RATE_LIMIT = undefined;
+    }
+  });
+});
+
+describe('hardening: generic retry', () => {
+  it('retries twice with nextRunAt backoff and then fails', async () => {
+    const job = await createJob();
+    const run = await prisma.run.create({ data: { jobId: job.id, status: 'queued' } });
+    sdkBehavior = { messages: [], researchJson: null }; // causes "research.json missing"
+
+    // attempt 1 → throws
+    await tick();
+    let r = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
+    expect(r.status).toBe('queued');
+    expect(r.attempt).toBe(1);
+    expect(r.nextRunAt).toBeInstanceOf(Date);
+    expect(r.nextRunAt!.getTime()).toBeGreaterThan(Date.now() + 30_000);
+
+    // a second tick immediately shouldn't pick it up (nextRunAt gate)
+    await tick();
+    r = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
+    expect(r.status).toBe('queued');
+    expect(r.attempt).toBe(1);
+
+    // simulate time advancing: clear nextRunAt so it's pickable
+    await prisma.run.update({ where: { id: run.id }, data: { nextRunAt: null } });
+    await tick();
+    r = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
+    expect(r.status).toBe('queued');
+    expect(r.attempt).toBe(2);
+
+    // final attempt → failed
+    await prisma.run.update({ where: { id: run.id }, data: { nextRunAt: null } });
+    await tick();
+    r = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
+    expect(r.status).toBe('failed');
+    expect(r.error).toMatch(/research\.json missing/);
+  });
+});
+
+describe('hardening: preflight (onFire)', () => {
+  it('skips (no row) when within minIntervalMinutes of lastRunAt', async () => {
+    const job = await createJob({ schedule: '* * * * *' });
+    const recent = new Date(Date.now() - 2 * 60_000);
+    await prisma.job.update({
+      where: { id: job.id },
+      data: { minIntervalMinutes: 10, lastRunAt: recent },
+    });
+
+    await onFire(job.id);
+
+    const runs = await prisma.run.findMany({ where: { jobId: job.id } });
+    expect(runs).toHaveLength(0);
+  });
+
+  it('creates deferred row when monthlyBudget exhausted', async () => {
+    const job = await createJob();
+    await prisma.job.update({ where: { id: job.id }, data: { monthlyBudget: 1 } });
+    // existing run this month
+    await prisma.run.create({ data: { jobId: job.id, status: 'success' } });
+
+    await onFire(job.id);
+
+    const runs = await prisma.run.findMany({
+      where: { jobId: job.id },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(runs).toHaveLength(2);
+    expect(runs[1]!.status).toBe('deferred');
+    expect(runs[1]!.error).toMatch(/monthly budget exceeded/);
   });
 });
 

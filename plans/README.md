@@ -15,7 +15,7 @@ This plan set supersedes an earlier 11-plan draft. Scope was trimmed aggressivel
 7. [Hardening](./07-hardening.md) — rate-limit → `deferred`, retries w/ backoff, monthly budget, min interval, research caps, failure-notice emails
 8. [Deploy + Polish](./08-deploy-polish.md) — GH Actions → GHCR → existing Watchtower (label-scoped); cron collision hints; next-5-fires preview; AccountInfo badge; token/cost capture; error formatting; run-dir cleanup; nightly pg_dump
 
-**Shipped**: 1, 2, 3, 4, 5, 6. **Next**: 7.
+**Shipped**: 1, 2, 3, 4, 5, 6, 7. **Next**: 8.
 
 ## Decisions Log
 
@@ -71,6 +71,10 @@ Locked during planning. Change here first if you revisit; then sweep referencing
 | Run rerun split (plan 6) | Re-run Stage 2 inserts a new `runs` row with `skipResearch=true` + copied `researchRaw`; poll.execute branches on that flag to skip `runResearch()`. Re-run full uses the same path as Run Now. Old runs are never mutated. | History preserved; no schema-level polymorphism (`meta jsonb` was considered and rejected in favor of the dedicated `skip_research` bool already in the schema). |
 | SSE implementation (plan 6) | Next.js route handler with `runtime='nodejs'` + `ReadableStream`, 1s polling on `run_logs` (gt lastSeenId) and `runs.status` separately. Headers: `text/event-stream`, `no-cache, no-transform`, `X-Accel-Buffering: no`. Closes on `req.signal` abort. | Edge runtime incompatible with iron-session/Prisma/long-lived streams. `X-Accel-Buffering: no` required if anything reverse-proxies in front. |
 | HTML preview sandbox (plan 6) | `<iframe srcDoc={rendered} sandbox="">` — empty sandbox attribute, no `allow-same-origin`, no `allow-scripts`. | Opaque-origin iframe can still render inlined CSS; no script execution means no access to parent cookies/session. Adding `allow-same-origin` would defeat the purpose. |
+| Rate-limit detection (plan 7) | `detectRateLimit(err)` inspects `err.message` against `/rate[_\s-]?limit/i`, `/\b429\b/`, `/too many requests/i`, `/quota exceeded/i`. Reset time resolves from `err.resetAt` → `err.headers['retry-after']` → first ISO timestamp in message → 5-hour fallback. `research.ts` also honors a `SIM_RATE_LIMIT=1` env hook for tests. | Anthropic's SDK error shape has varied across versions; matching on message text is the least-fragile option. 5-hour fallback matches Anthropic's 5-hour rolling window. |
+| Retry vs. defer (plan 7) | `RateLimitError` → `deferred`, `nextRunAt=resetAt`, **no** attempt bump. Generic throw → requeue with `attempt++` and `nextRunAt=now+backoff` (1m, 5m); 3rd failure → `failed` + failure-notice email. Poll filters on `nextRunAt <= now OR NULL`, so backoff works without a separate delay queue. | A rate-limit retry loop is the single biggest footgun — never counts against the retry budget. Backoff via `nextRunAt` on the same row keeps the model dead-simple. |
+| Preflight gates (plan 7) | `@renews/shared/preflight.preflightJob(job, now)` returns `ok | skip | defer`. Used by `onFire` **and** `POST /api/jobs/:id/run` (identical logic). Skip = no row. Defer = insert a `deferred` row with `error=reason`. Monthly-budget window is `createdAt >= startOfMonthLocal(now)`. Rerun endpoints (`/rerun-full`, `/rerun-stage2`) intentionally bypass — operator overrides. | Same check in both entry points prevents drift; rerun routes are explicit overrides from the UI and should not be gated. |
+| `attempt` persistence (plan 7) | The `attempt` counter lives on `runs.attempt` (0-indexed, bumped on requeue), not in worker memory. | Survives worker crashes: after `staleRecovery` requeues a stale `running` row, the retry budget resumes where it left off. |
 
 ## Plan Format
 

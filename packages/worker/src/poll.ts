@@ -1,10 +1,14 @@
 import { logger, prisma, streamLogToDb } from '@renews/shared';
 import { runEmail } from './pipeline/email.js';
+import { RateLimitError, detectRateLimit } from './pipeline/errors.js';
+import { sendFailureNotice } from './pipeline/failureNotice.js';
 import { runRender } from './pipeline/render.js';
 import { type ResearchJson, runResearch } from './pipeline/research.js';
 import { runSummary } from './pipeline/summarize.js';
 
 const HEARTBEAT_MS = 30_000;
+const MAX_ATTEMPTS = 3; // attempt is 0-indexed; 3 total tries
+const RETRY_BACKOFF_MS = [60_000, 5 * 60_000]; // attempt 0→1: 1m, 1→2: 5m
 
 let inFlight = false;
 
@@ -12,8 +16,12 @@ export async function tick(): Promise<void> {
   if (inFlight) return;
   inFlight = true;
   try {
+    const now = new Date();
     const run = await prisma.run.findFirst({
-      where: { status: 'queued' },
+      where: {
+        status: 'queued',
+        OR: [{ nextRunAt: null }, { nextRunAt: { lte: now } }],
+      },
       orderBy: { createdAt: 'asc' },
       select: { id: true },
     });
@@ -70,20 +78,77 @@ async function execute(runId: string): Promise<void> {
     });
     logger.info(`poll: run ${runId} complete`);
   } catch (err) {
-    const msg = err instanceof Error ? err.stack || err.message : String(err);
-    logger.error(`poll: run ${runId} failed:`, msg);
+    clearInterval(heartbeat);
+    await handleFailure(runId, err);
+    return;
+  }
+  clearInterval(heartbeat);
+}
+
+async function handleFailure(runId: string, err: unknown): Promise<void> {
+  const errMsg = err instanceof Error ? err.message : String(err);
+  const errStack = err instanceof Error ? err.stack || err.message : String(err);
+  logger.error(`poll: run ${runId} failed:`, errStack);
+
+  const rl = err instanceof RateLimitError ? err : detectRateLimit(err);
+  if (rl) {
     await prisma.run
       .update({
         where: { id: runId },
         data: {
-          status: 'failed',
+          status: 'deferred',
           finishedAt: new Date(),
           heartbeatAt: null,
-          error: String(err instanceof Error ? err.message : err),
+          nextRunAt: rl.resetAt,
+          error: rl.message,
         },
       })
-      .catch((e) => logger.error(`poll: could not mark run ${runId} failed:`, e));
-  } finally {
-    clearInterval(heartbeat);
+      .catch((e) => logger.error(`poll: could not mark run ${runId} deferred:`, e));
+    await streamLogToDb(runId, 'sys', rl.message, 'warn').catch(() => {});
+    return;
   }
+
+  const current = await prisma.run
+    .findUnique({ where: { id: runId }, select: { attempt: true } })
+    .catch(() => null);
+  const attempt = current?.attempt ?? 0;
+
+  if (attempt + 1 < MAX_ATTEMPTS) {
+    const backoff = RETRY_BACKOFF_MS[attempt] ?? RETRY_BACKOFF_MS[RETRY_BACKOFF_MS.length - 1]!;
+    const nextAt = new Date(Date.now() + backoff);
+    await prisma.run
+      .update({
+        where: { id: runId },
+        data: {
+          status: 'queued',
+          startedAt: null,
+          heartbeatAt: null,
+          nextRunAt: nextAt,
+          attempt: { increment: 1 },
+          error: errMsg,
+        },
+      })
+      .catch((e) => logger.error(`poll: could not requeue run ${runId}:`, e));
+    await streamLogToDb(
+      runId,
+      'sys',
+      `retry ${attempt + 1}/${MAX_ATTEMPTS - 1} scheduled at ${nextAt.toISOString()}: ${errMsg}`,
+      'warn',
+    ).catch(() => {});
+    return;
+  }
+
+  await prisma.run
+    .update({
+      where: { id: runId },
+      data: {
+        status: 'failed',
+        finishedAt: new Date(),
+        heartbeatAt: null,
+        error: errMsg,
+      },
+    })
+    .catch((e) => logger.error(`poll: could not mark run ${runId} failed:`, e));
+
+  await sendFailureNotice(runId);
 }

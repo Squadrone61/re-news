@@ -4,6 +4,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { Job } from '@prisma/client';
 import { prisma, streamLogToDb } from '@renews/shared';
 import { buildResearchPrompt } from '../prompts/research.js';
+import { RateLimitError, detectRateLimit } from './errors.js';
 
 const RUNS_ROOT = process.env.RUNS_DIR ?? '/app/data/runs';
 const MAX_ITEMS = 25;
@@ -16,20 +17,30 @@ export type ResearchJson = {
 };
 
 export async function runResearch(runId: string, job: Job): Promise<ResearchJson> {
+  if (process.env.SIM_RATE_LIMIT === '1') {
+    throw new RateLimitError('rate_limit: simulated', new Date(Date.now() + 3600 * 1000));
+  }
+
   const cwd = path.join(RUNS_ROOT, runId);
   await fs.mkdir(cwd, { recursive: true });
 
-  for await (const msg of query({
-    prompt: buildResearchPrompt(job),
-    options: {
-      allowedTools: ['WebFetch', 'WebSearch', 'Bash', 'Read', 'Write'],
-      permissionMode: 'acceptEdits',
-      cwd,
-      model: job.modelResearch,
-      maxTurns: 40,
-    },
-  })) {
-    await streamLogToDb(runId, 'research', msg);
+  try {
+    for await (const msg of query({
+      prompt: buildResearchPrompt(job),
+      options: {
+        allowedTools: ['WebFetch', 'WebSearch', 'Bash', 'Read', 'Write'],
+        permissionMode: 'acceptEdits',
+        cwd,
+        model: job.modelResearch,
+        maxTurns: 40,
+      },
+    })) {
+      await streamLogToDb(runId, 'research', msg);
+    }
+  } catch (e) {
+    const rl = detectRateLimit(e);
+    if (rl) throw rl;
+    throw e;
   }
 
   const researchPath = path.join(cwd, 'research.json');
@@ -47,7 +58,7 @@ export async function runResearch(runId: string, job: Job): Promise<ResearchJson
     throw new Error('research.json invalid JSON');
   }
 
-  const truncated = truncateResearch(parsed);
+  const truncated = await truncateResearch(runId, parsed);
 
   await prisma.run.update({
     where: { id: runId },
@@ -61,15 +72,33 @@ export async function runResearch(runId: string, job: Job): Promise<ResearchJson
   return truncated;
 }
 
-function truncateResearch(parsed: ResearchJson): ResearchJson {
-  const items = Array.isArray(parsed.items) ? parsed.items.slice(0, MAX_ITEMS) : [];
-  const capped = items.map((item) => {
+async function truncateResearch(runId: string, parsed: ResearchJson): Promise<ResearchJson> {
+  const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
+  if (rawItems.length > MAX_ITEMS) {
+    await streamLogToDb(
+      runId,
+      'sys',
+      `truncated items to ${MAX_ITEMS} (prompt cap violated: ${rawItems.length})`,
+      'warn',
+    );
+  }
+  const items = rawItems.slice(0, MAX_ITEMS);
+  const capped: Array<Record<string, unknown>> = [];
+  for (const item of items) {
     const content = item.content;
     if (typeof content === 'string' && content.length > MAX_CONTENT_CHARS) {
-      return { ...item, content: content.slice(0, MAX_CONTENT_CHARS) };
+      const url = typeof item.url === 'string' ? item.url : 'item';
+      await streamLogToDb(
+        runId,
+        'sys',
+        `truncated content for ${url} to ${MAX_CONTENT_CHARS} chars`,
+        'warn',
+      );
+      capped.push({ ...item, content: content.slice(0, MAX_CONTENT_CHARS) });
+    } else {
+      capped.push(item);
     }
-    return item;
-  });
+  }
   const errors = Array.isArray(parsed.fetch_errors) ? parsed.fetch_errors : [];
   return {
     fetched_at:

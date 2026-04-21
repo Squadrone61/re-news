@@ -54,12 +54,12 @@
 
 ## Acceptance criteria
 
-- [ ] Simulated rate-limit (test-only env `SIM_RATE_LIMIT=1` causing research.ts to throw a RateLimitError with reset=now+3600s) → run is `deferred`, `nextRunAt` populated, no retries
-- [ ] Simulated generic throw → 2 retries with backoff (rows show 3 total attempts); on 3rd failure, status `failed`, failure-notice email sent
-- [ ] `docker kill renews_worker` mid-run → on restart, stale `running` row → `queued`; pipeline resumes cleanly (Stage 1 recomputes from scratch — intentional)
-- [ ] `monthlyBudget: 1` — second cron fire of the month inserts a `deferred` row with `error="monthly budget exceeded"`; pipeline never runs
-- [ ] `minIntervalMinutes: 10` + `cron "* * * * *"` — only one run per 10 min; interim ticks produce no rows at all
-- [ ] Research output with 50 items → post-parse truncated to 25, warning log line present
+- [x] Simulated rate-limit (test-only env `SIM_RATE_LIMIT=1` causing research.ts to throw a RateLimitError with reset=now+3600s) → run is `deferred`, `nextRunAt` populated, no retries
+- [x] Simulated generic throw → 2 retries with backoff (rows show 3 total attempts); on 3rd failure, status `failed`, failure-notice email sent
+- [x] `docker kill renews_worker` mid-run → on restart, stale `running` row → `queued`; pipeline resumes cleanly (Stage 1 recomputes from scratch — intentional)
+- [x] `monthlyBudget: 1` — second cron fire of the month inserts a `deferred` row with `error="monthly budget exceeded"`; pipeline never runs
+- [x] `minIntervalMinutes: 10` + `cron "* * * * *"` — only one run per 10 min; interim ticks produce no rows at all
+- [x] Research output with 50 items → post-parse truncated to 25, warning log line present
 
 ## Verification
 
@@ -102,6 +102,17 @@ docker compose -p re-news exec db psql -U newsletter -d newsletter -tc \
 
 pnpm test
 ```
+
+## Notes (shipped)
+
+- `runs.attempt` and `jobs.minIntervalMinutes` columns were already present from plan 1; no new migration needed
+- `RateLimitError` + `detectRateLimit(err)` live in `packages/worker/src/pipeline/errors.ts`. `research.ts` honors `SIM_RATE_LIMIT=1` (test hook) and wraps the SDK `query()` iteration in a try/catch that routes any throw through `detectRateLimit` before rethrowing — so an SDK-raised 429 becomes a `RateLimitError` instead of a generic failure
+- Poll `tick()` filters on `nextRunAt` (`null OR <= now`); `handleFailure` is the single catch site; rate-limit → `deferred` (no attempt bump); generic → `attempt++` requeue with `nextRunAt = now + backoff[attempt]`; terminal → `failed` + `sendFailureNotice(runId)`
+- `@renews/shared/preflight` exports `preflightJob(job, now)` used by `onFire` AND `/api/jobs/:id/run`. Skip = no row. Defer = insert a `deferred` row with `error=reason`. Monthly-budget window uses `createdAt >= startOfMonthLocal(now)` (server local time). Manual-run API returns 429 on skip; defer returns `{runId, status:'deferred', reason}`
+- Rerun endpoints (`/rerun-full`, `/rerun-stage2`) intentionally bypass preflight — explicit operator overrides from the UI
+- Failure-notice email via `pipeline/failureNotice.ts` — same Gmail transport as `email.ts`, reads Setting each call, swallows all errors (logs `sys` warn line)
+- Post-parse research caps now emit `sys` warn log lines when they truncate (items > 25 or content > 800)
+- Integration tests cover: rate-limit deferred (no retry), generic 3-attempt fail path, min-interval skip, monthly-budget defer row, truncation warn logs
 
 ## Notes / gotchas
 
