@@ -59,14 +59,21 @@
 
 ## Acceptance criteria
 
-- [ ] Boot worker with 1 enabled job `cron="* * * * *"`; within 70s a `runs` row exists and reaches `success`
-- [ ] Toggle job off via API; over next 3 min no new runs
-- [ ] Change schedule via PUT; old schedule never fires again; new schedule drives subsequent fires
-- [ ] Delete job; registry unregisters within 60s
-- [ ] Manual Run Now inserts queued row; worker picks it up within 6s
-- [ ] Simulated stale `running` row (old heartbeat) is reset to `queued` on next worker boot and drains
-- [ ] Worker restart does not lose jobs — reconcile re-registers them all
-- [ ] No double-success: given a queued row, exactly one `run_logs[stage=sys] "received run …"` line is written
+- [x] Boot worker with 1 enabled job `cron="* * * * *"`; within 70s a `runs` row exists and reaches `success`
+- [x] Toggle job off via API; over next 3 min no new runs
+- [x] Change schedule via PUT; old schedule never fires again; new schedule drives subsequent fires
+- [x] Delete job; registry unregisters within 60s
+- [x] Manual Run Now inserts queued row; worker picks it up within 6s
+- [x] Simulated stale `running` row (old heartbeat) is reset to `queued` on next worker boot and drains
+- [x] Worker restart does not lose jobs — reconcile re-registers them all
+- [x] No double-success: given a queued row, exactly one `run_logs[stage=sys] "received run …"` line is written
+
+## Notes (shipped)
+
+- node-cron v4 used (not v3). API: `cron.schedule(expr, fn)` returns a `ScheduledTask` with async `stop()`/`destroy()`. Registry wraps both on unregister.
+- Reconcile compares `schedule` strings and treats any change as unregister-then-register (cheap at this scale).
+- Poll uses an in-flight flag so overlapping 5s ticks can't stack while a run is executing. Combined with atomic `updateMany({where:{id, status:'queued'}})` this gives single-worker exactly-once semantics.
+- Stale recovery also re-queues rows with `heartbeatAt IS NULL` and `status='running'` (covers crash-before-first-heartbeat). `startedAt` is cleared on re-queue so the eventual success row reflects the successful attempt's timing.
 
 ## Verification
 

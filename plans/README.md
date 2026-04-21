@@ -51,6 +51,9 @@ Locked during planning. Change here first if you revisit; then sweep referencing
 | Isolation | Compose project `re-news`, container names `renews_*`, dedicated `renews_net`, no `network_mode: host`, per-service `mem_limit`/`cpus`, web on port 3100 | Protects user's other containers on the same host |
 | Backups | Nightly `pg_dump` to `./data/backups/` via a cron container (plan 8) | Cheap insurance for job config + run history |
 | Dev/test env | Linux home server only (the other PC); Claude Code runs there to help | User preference — no local Docker Desktop |
+| node-cron version | v4.x (async `stop()`/`destroy()`) | Latest; registry awaits both on unregister/shutdown |
+| Worker test strategy | Testcontainers-backed Vitest integration tests at `packages/worker/src/__tests__/*.test.ts` — spins a throwaway `postgres:16-alpine`, runs `prisma migrate deploy`, exercises `onFire`/`poll.tick`/`staleRecovery` against real DB | Cron-tick acceptance is proven in shell verification (70s real time); unit-level tests cover the data-layer contracts without slow timers |
+| Stale-run predicate | `status='running' AND (heartbeat_at IS NULL OR heartbeat_at < now()-5min)` → reset to `queued`, `started_at = NULL`, `heartbeat_at = NULL` | NULL heartbeat covers crash-before-first-heartbeat |
 
 ## Plan Format
 

@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Status
 
-Plans 1–2 landed. The 3-service compose stack boots (`web`, `worker`, `db`), Prisma schema is migrated, and session-based auth + full jobs CRUD ship against a per-user ownership model. "Run Now" inserts a `queued` runs row but the worker doesn't pick it up yet (plan 3).
+Plans 1–3 landed. The 3-service compose stack boots (`web`, `worker`, `db`), Prisma schema is migrated, session-based auth + full jobs CRUD ship against a per-user ownership model, and the worker now embeds node-cron scheduling + a 5s queued-run poll with heartbeat + stale-run recovery. A stub pipeline flips `queued → running → success`; plan 4 replaces the stub with the real research stage.
 
 **The implementation plans in `plans/` are the authoritative source of truth** — start with `plans/README.md` (index + Decisions Log), then read the relevant plan file. `plans/spec.md` is the original product spec; it has been kept in sync with locked decisions but the 8 plan files are where actionable implementation detail lives.
 
-**Build order**: 8 sequenced plans in `plans/` (01-skeleton → 08-deploy-polish). Each plan has Goal, Dependencies, Scope, Tasks, Acceptance Criteria, and a Verification block with shell commands. Work them in order. Completed: 1, 2. Next: 3 (worker loop).
+**Build order**: 8 sequenced plans in `plans/` (01-skeleton → 08-deploy-polish). Each plan has Goal, Dependencies, Scope, Tasks, Acceptance Criteria, and a Verification block with shell commands. Work them in order. Completed: 1, 2, 3. Next: 4 (research agent).
 
 ## What We're Building
 
@@ -56,8 +56,14 @@ Monorepo layout under `packages/{web,worker,shared}` with Prisma schema at the r
 - Job editor warns when a new schedule collides at the same minute as an existing enabled job; suggests `:03`/`:17`/`:37` staggering (plan 8).
 
 **Stale-run recovery.**
-- Worker updates `runs.heartbeat_at` every 30s during execution. On worker boot, any `running` run with heartbeat older than 5 min gets reset to `queued`. The pipeline is idempotent: Stage 1 recomputes, Stage 2 is a pure transform over `research_raw`.
+- Worker updates `runs.heartbeat_at` every 30s during execution. On worker boot, any `running` run with heartbeat older than 5 min (or NULL — covers crash-before-first-heartbeat) gets reset to `queued` with `started_at` cleared. The pipeline is idempotent: Stage 1 recomputes, Stage 2 is a pure transform over `research_raw`.
 - If the worker crashes mid-email, resend on recovery duplicates. Accepted for v1 — better than a dropped send.
+
+**Worker scheduling + poll internals (plan 3).**
+- `node-cron` v4: `ScheduledTask.stop()` and `.destroy()` are both async. Registry awaits both on unregister and on shutdown; skipping the awaits leaks open handles on reconcile churn.
+- Reconcile runs every 60s (and on boot). A schedule-string change = unregister + register; no hot-swap needed.
+- Poll loop uses an in-flight flag so overlapping 5s ticks can't stack while a run is executing. Combined with an atomic `updateMany({where:{id, status:'queued'}, data:{status:'running', ...}})` this gives exactly-once semantics with a single worker; the atomic claim is still correct if we ever run concurrent workers.
+- `onFire` re-reads the job from DB before inserting a run — handles the race where user disables between cron firing and the insert.
 
 **Email delivery uses Gmail SMTP via Nodemailer** (shared admin-owned sender, not Resend).
 - Admin configures one Gmail account + app password in `/settings`. All users' newsletters send from that address; each job has its own `recipient_email`.
