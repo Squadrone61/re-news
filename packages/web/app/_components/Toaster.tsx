@@ -2,6 +2,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   type ReactNode,
+  Suspense,
   createContext,
   useCallback,
   useContext,
@@ -65,7 +66,9 @@ export function ToasterProvider({ children }: { children: ReactNode }) {
         toasts={toasts}
         onClose={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))}
       />
-      <RedirectToastConsumer />
+      <Suspense fallback={null}>
+        <RedirectToastConsumer />
+      </Suspense>
     </Ctx.Provider>
   );
 }
