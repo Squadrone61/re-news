@@ -48,7 +48,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
           });
         }
         // Sleep long enough for the cancel-watch (1s) to fire and abort.
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        // 2500ms gives ~1.5s of headroom on slow CI runners.
+        await new Promise((resolve) => setTimeout(resolve, 2500));
         throw new Error('aborted by controller');
       }
       if (cwd && sdkBehavior.researchJson !== null && sdkBehavior.researchJson !== undefined) {
