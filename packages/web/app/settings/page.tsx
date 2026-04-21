@@ -110,27 +110,41 @@ function AccountInfoPanel({
     );
   }
   const d = info.data ?? {};
+  const parts: { key: string; node: React.ReactNode }[] = [];
+  if (d.plan)
+    parts.push({
+      key: 'plan',
+      node: (
+        <>
+          plan: <code>{d.plan}</code>
+        </>
+      ),
+    });
+  if (d.tier)
+    parts.push({
+      key: 'tier',
+      node: (
+        <>
+          tier: <code>{d.tier}</code>
+        </>
+      ),
+    });
+  if (d.email) parts.push({ key: 'email', node: <code>{d.email}</code> });
+  if (d.refreshedAt)
+    parts.push({
+      key: 'refreshedAt',
+      node: <>refreshed {new Date(d.refreshedAt).toLocaleString()}</>,
+    });
   return (
     <div style={box}>
       <strong>Claude account</strong>
       <div style={{ color: '#9ab', marginTop: 4 }}>
-        plan: <code>{d.plan ?? '—'}</code>
-        {d.tier && (
-          <>
-            {' · '}tier: <code>{d.tier}</code>
-          </>
-        )}
-        {d.email && (
-          <>
-            {' · '}
-            <code>{d.email}</code>
-          </>
-        )}
-        {d.refreshedAt && (
-          <>
-            {' · '}refreshed {new Date(d.refreshedAt).toLocaleString()}
-          </>
-        )}
+        {parts.map((p, i) => (
+          <span key={p.key}>
+            {i > 0 && ' · '}
+            {p.node}
+          </span>
+        ))}
       </div>
     </div>
   );
