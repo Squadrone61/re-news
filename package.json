@@ -12,7 +12,7 @@
     "format": "biome format --write .",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
-    "build": "pnpm -r build",
+    "build": "pnpm prisma:generate && pnpm -r build",
     "dev": "pnpm -r --parallel dev",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev"
