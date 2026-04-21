@@ -115,3 +115,16 @@ Full column list in `plans/spec.md` §5 and reflected in `prisma/schema.prisma` 
 - Auth ships in **plan 2**, not later — session cookies (iron-session) + `/setup` first-run flow + `/admin/users`. Don't write handlers against a stub.
 - Sandboxed iframe for HTML newsletter preview: `sandbox=""` (empty, no flags). Srcdoc content renders with opaque origin; no JS, no parent access. Don't add `allow-same-origin`.
 - `.env` must define `SESSION_PASSWORD` (≥32 chars for iron-session), `DB_PASSWORD`, and — once plan 5 lands — Gmail creds via the Settings UI, not env.
+
+## After every plan (RULE)
+
+When a plan is complete — acceptance criteria verified, code committed — immediately update the docs in a follow-up commit before starting the next plan. Don't batch this across multiple plans.
+
+- `CLAUDE.md` (this file):
+  - "Project Status" paragraph: bump which plans have landed and what the next one is
+  - Add any new non-obvious constraints the plan exposed (mount quirks, bundling workarounds, packaging splits, unexpected runtime behaviors) — the kind of gotcha a future session would waste an hour rediscovering
+  - Update "Commands" if the plan added or changed any
+- `plans/README.md` Decisions Log: record any choice made during execution that deviated from or filled a gap in the plan, so later plans don't relitigate it
+- `plans/NN-<plan>.md`: tick the acceptance-criteria checkboxes; add a short "Notes" line if the shipped behavior differs from what the plan originally described
+
+Keep these updates surgical — not a changelog, not a retrospective. The point is that the next Claude session (or the next plan) can read these files and make correct decisions without re-deriving them.
