@@ -59,7 +59,7 @@ export function RunDetail({ initial }: { initial: Initial }) {
       };
       setStatus(data.status);
       if (data.error !== undefined) setError(data.error ?? null);
-      if (['success', 'failed', 'deferred'].includes(data.status)) {
+      if (['success', 'failed', 'deferred', 'cancelled'].includes(data.status)) {
         // refresh server data (researchRaw / rendered / stage2Json) on terminal status
         router.refresh();
       }
@@ -424,7 +424,9 @@ function StatusBadge({ status }: { status: string }) {
           ? '#2a6fdb'
           : status === 'deferred'
             ? '#c08a2e'
-            : '#777';
+            : status === 'cancelled'
+              ? '#888'
+              : '#777';
   return (
     <span
       style={{

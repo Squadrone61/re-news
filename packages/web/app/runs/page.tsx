@@ -115,7 +115,9 @@ function StatusBadge({ status }: { status: string }) {
           ? '#2a6fdb'
           : status === 'deferred'
             ? '#c08a2e'
-            : '#777';
+            : status === 'cancelled'
+              ? '#888'
+              : '#777';
   return (
     <span
       style={{
