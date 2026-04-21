@@ -2,6 +2,7 @@
 import { marked } from 'marked';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { StopRunButton } from '../../_components/StopRunButton';
 
 type Initial = {
   id: string;
@@ -130,8 +131,9 @@ export function RunDetail({ initial }: { initial: Initial }) {
             </span>
           )}
         </div>
-        <div style={{ marginTop: '0.5rem' }}>
+        <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <StatusBadge status={status} />
+          <StopRunButton runId={initial.id} status={status} />
         </div>
         {error && <ErrorDisplay message={error} nextRunAt={initial.nextRunAt} />}
         <UsageBadges
