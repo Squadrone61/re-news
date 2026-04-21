@@ -170,94 +170,138 @@ export function JobForm({
         e.preventDefault();
         save(false);
       }}
-      style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: 720 }}
+      style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem', maxWidth: 960 }}
     >
-      <label style={lbl}>
-        Name
-        <input style={inp} value={v.name} onChange={(e) => set('name', e.target.value)} required />
-      </label>
-
-      <label style={lbl}>
-        Schedule preset
-        <select
-          style={inp}
-          value={preset}
-          onChange={(e) => {
-            setPreset(e.target.value);
-            if (e.target.value) set('schedule', e.target.value);
-          }}
-        >
-          {PRESETS.map((p) => (
-            <option key={p.label} value={p.value}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label style={lbl}>
-        Cron expression
-        <input
-          style={inp}
-          value={v.schedule}
-          onChange={(e) => {
-            set('schedule', e.target.value);
-            setPreset('');
-          }}
-          required
-        />
-        <small style={{ color: fieldErr.schedule ? '#e66' : '#888' }}>
-          {fieldErr.schedule ?? humanSchedule}
-        </small>
-        {preview && preview.next5.length > 0 && (
-          <div
+      {/* Row: Name + Enabled */}
+      <div style={row('3fr 1fr')}>
+        <label style={lbl}>
+          Name
+          <input
+            style={inp}
+            value={v.name}
+            onChange={(e) => set('name', e.target.value)}
+            required
+          />
+        </label>
+        <label style={{ ...lbl, justifyContent: 'flex-end' }}>
+          <span style={{ fontSize: '0.85em', color: '#888' }}>Status</span>
+          <label
             style={{
-              marginTop: 6,
-              padding: '0.5rem 0.7rem',
-              border: '1px solid #222',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '0.5rem 0.6rem',
+              border: '1px solid #333',
               borderRadius: 3,
-              background: '#0b0d13',
-              fontSize: '0.85em',
+              background: '#0b0c0f',
+              cursor: 'pointer',
             }}
           >
-            <div style={{ color: '#9ab', marginBottom: 3 }}>
-              Next 5 fires{preview.timezone && ` (${preview.timezone})`}:
-            </div>
-            <ul style={{ margin: 0, paddingLeft: '1.1rem', color: '#ccc' }}>
-              {preview.next5.map((t) => (
-                <li key={t.iso}>{t.formatted}</li>
-              ))}
-            </ul>
-            {preview.collisions.length > 0 && (
-              <div
-                style={{
-                  marginTop: 6,
-                  color: '#f7d98a',
-                  borderTop: '1px solid #222',
-                  paddingTop: 5,
-                }}
-              >
-                ⚠ Collides this minute with: {preview.collisions.map((c) => c.name).join(', ')}.
-                Consider offsetting to <code>:03</code>, <code>:17</code>, or <code>:37</code> to
-                stagger.
-              </div>
-            )}
-          </div>
-        )}
-      </label>
+            <input
+              type="checkbox"
+              checked={v.enabled}
+              onChange={(e) => set('enabled', e.target.checked)}
+            />
+            <span>{v.enabled ? 'Enabled' : 'Disabled'}</span>
+          </label>
+        </label>
+      </div>
 
+      {/* Row: Schedule preset + Cron expression */}
+      <div style={row('1fr 2fr')}>
+        <label style={lbl}>
+          Schedule preset
+          <select
+            style={inp}
+            value={preset}
+            onChange={(e) => {
+              setPreset(e.target.value);
+              if (e.target.value) set('schedule', e.target.value);
+            }}
+          >
+            {PRESETS.map((p) => (
+              <option key={p.label} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={lbl}>
+          Cron expression
+          <input
+            style={inp}
+            value={v.schedule}
+            onChange={(e) => {
+              set('schedule', e.target.value);
+              setPreset('');
+            }}
+            required
+          />
+          <small style={{ color: fieldErr.schedule ? '#e66' : '#888' }}>
+            {fieldErr.schedule ?? humanSchedule}
+          </small>
+        </label>
+      </div>
+
+      {/* Full-width preview + collision */}
+      {preview && preview.next5.length > 0 && (
+        <div
+          style={{
+            padding: '0.55rem 0.75rem',
+            border: '1px solid #222',
+            borderRadius: 3,
+            background: '#0b0d13',
+            fontSize: '0.85em',
+          }}
+        >
+          <div style={{ color: '#9ab', marginBottom: 4 }}>
+            Next 5 fires{preview.timezone && ` (${preview.timezone})`}:
+          </div>
+          <ul
+            style={{
+              margin: 0,
+              paddingLeft: '1.1rem',
+              color: '#ccc',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+              gap: '0.1rem 1rem',
+            }}
+          >
+            {preview.next5.map((t) => (
+              <li key={t.iso}>{t.formatted}</li>
+            ))}
+          </ul>
+          {preview.collisions.length > 0 && (
+            <div
+              style={{
+                marginTop: 6,
+                color: '#f7d98a',
+                borderTop: '1px solid #222',
+                paddingTop: 5,
+              }}
+            >
+              ⚠ Collides this minute with: {preview.collisions.map((c) => c.name).join(', ')}.
+              Consider offsetting to <code>:03</code>, <code>:17</code>, or <code>:37</code> to
+              stagger.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Sources */}
       <fieldset style={fs}>
         <legend>Sources</legend>
         {v.sources.map((s, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: transient form rows
           <div key={i} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
             <input
-              style={{ ...inp, flex: 2 }}
+              style={{ ...inp, flex: 3 }}
               placeholder="https://…"
               value={s.url}
               onChange={(e) => setSource(i, { url: e.target.value })}
             />
             <input
-              style={{ ...inp, flex: 1 }}
+              style={{ ...inp, flex: 2 }}
               placeholder="hint (optional)"
               value={s.hint ?? ''}
               onChange={(e) => setSource(i, { hint: e.target.value })}
@@ -280,20 +324,34 @@ export function JobForm({
         </button>
       </fieldset>
 
-      <label style={lbl}>
-        Topic
-        <input
-          style={inp}
-          value={v.topic}
-          onChange={(e) => set('topic', e.target.value)}
-          required
-        />
-      </label>
+      {/* Row: Topic + Recipient email */}
+      <div style={row('1fr 1fr')}>
+        <label style={lbl}>
+          Topic
+          <input
+            style={inp}
+            value={v.topic}
+            onChange={(e) => set('topic', e.target.value)}
+            required
+          />
+        </label>
+        <label style={lbl}>
+          Recipient email
+          <input
+            style={inp}
+            type="email"
+            value={v.recipientEmail}
+            onChange={(e) => set('recipientEmail', e.target.value)}
+            required
+          />
+        </label>
+      </div>
 
+      {/* Full-width Base prompt */}
       <label style={lbl}>
         Base prompt <small style={{ color: '#888' }}>({v.basePrompt.length} chars)</small>
         <textarea
-          style={{ ...inp, minHeight: 140, fontFamily: 'inherit' }}
+          style={{ ...inp, minHeight: 160, fontFamily: 'inherit' }}
           value={v.basePrompt}
           onChange={(e) => set('basePrompt', e.target.value)}
           placeholder={BASE_PROMPT_PLACEHOLDER}
@@ -302,18 +360,8 @@ export function JobForm({
         <BasePromptHints />
       </label>
 
-      <label style={lbl}>
-        Recipient email
-        <input
-          style={inp}
-          type="email"
-          value={v.recipientEmail}
-          onChange={(e) => set('recipientEmail', e.target.value)}
-          required
-        />
-      </label>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+      {/* Output format / Max items / Monthly budget / Min interval — all compact numerics */}
+      <div style={row('1fr 1fr 1fr 1fr')}>
         <label style={lbl}>
           Output format
           <select
@@ -338,6 +386,33 @@ export function JobForm({
           />
         </label>
         <label style={lbl}>
+          Monthly budget
+          <input
+            style={inp}
+            type="number"
+            min={1}
+            value={v.monthlyBudget}
+            onChange={(e) => set('monthlyBudget', Number(e.target.value))}
+          />
+        </label>
+        <label style={lbl}>
+          Min interval (min)
+          <input
+            style={inp}
+            type="number"
+            min={0}
+            placeholder="optional"
+            value={v.minIntervalMinutes ?? ''}
+            onChange={(e) =>
+              set('minIntervalMinutes', e.target.value === '' ? null : Number(e.target.value))
+            }
+          />
+        </label>
+      </div>
+
+      {/* Row: model selectors */}
+      <div style={row('1fr 1fr')}>
+        <label style={lbl}>
           Research model
           <input
             style={inp}
@@ -353,38 +428,7 @@ export function JobForm({
             onChange={(e) => set('modelSummary', e.target.value)}
           />
         </label>
-        <label style={lbl}>
-          Monthly budget (runs)
-          <input
-            style={inp}
-            type="number"
-            min={1}
-            value={v.monthlyBudget}
-            onChange={(e) => set('monthlyBudget', Number(e.target.value))}
-          />
-        </label>
-        <label style={lbl}>
-          Min interval (minutes, optional)
-          <input
-            style={inp}
-            type="number"
-            min={0}
-            value={v.minIntervalMinutes ?? ''}
-            onChange={(e) =>
-              set('minIntervalMinutes', e.target.value === '' ? null : Number(e.target.value))
-            }
-          />
-        </label>
       </div>
-
-      <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <input
-          type="checkbox"
-          checked={v.enabled}
-          onChange={(e) => set('enabled', e.target.checked)}
-        />
-        Enabled
-      </label>
 
       {err && <p style={{ color: '#e66', margin: 0 }}>{err}</p>}
 
@@ -460,6 +504,10 @@ function BasePromptHints() {
       </p>
     </details>
   );
+}
+
+function row(template: string): React.CSSProperties {
+  return { display: 'grid', gridTemplateColumns: template, gap: '1rem', alignItems: 'end' };
 }
 
 const lbl: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4 };
