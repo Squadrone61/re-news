@@ -1,6 +1,6 @@
 import { logger, prisma, streamLogToDb } from '@renews/shared';
 import { runEmail } from './pipeline/email.js';
-import { RateLimitError, detectRateLimit } from './pipeline/errors.js';
+import { CancelledError, RateLimitError, detectRateLimit } from './pipeline/errors.js';
 import { sendFailureNotice } from './pipeline/failureNotice.js';
 import { runRender } from './pipeline/render.js';
 import { type ResearchJson, runResearch } from './pipeline/research.js';
@@ -12,6 +12,14 @@ const MAX_ATTEMPTS = 3; // attempt is 0-indexed; 3 total tries
 const RETRY_BACKOFF_MS = [60_000, 5 * 60_000]; // attempt 0→1: 1m, 1→2: 5m
 
 let inFlight = false;
+
+async function throwIfCancelled(runId: string): Promise<void> {
+  const r = await prisma.run.findUnique({
+    where: { id: runId },
+    select: { cancelRequested: true },
+  });
+  if (r?.cancelRequested) throw new CancelledError();
+}
 
 export async function tick(): Promise<void> {
   if (inFlight) return;
@@ -63,12 +71,18 @@ async function execute(runId: string): Promise<void> {
     } else {
       research = await runResearch(runId, run.job, usage);
     }
+    await throwIfCancelled(runId);
+
     const stage2 = await runSummary(runId, run.job, research, usage);
+    await throwIfCancelled(runId);
+
     const rendered = runRender(run.job, stage2);
     await prisma.run.update({
       where: { id: runId },
       data: { renderedOutput: rendered },
     });
+    await throwIfCancelled(runId);
+
     await runEmail(runId, run.job, stage2, rendered);
     await persistUsage(runId, usage);
     await prisma.run.update({
@@ -92,6 +106,23 @@ async function handleFailure(runId: string, err: unknown): Promise<void> {
   const errMsg = err instanceof Error ? err.message : String(err);
   const errStack = err instanceof Error ? err.stack || err.message : String(err);
   logger.error(`poll: run ${runId} failed:`, errStack);
+
+  if (err instanceof CancelledError) {
+    await prisma.run
+      .update({
+        where: { id: runId },
+        data: {
+          status: 'cancelled',
+          finishedAt: new Date(),
+          heartbeatAt: null,
+          cancelRequested: false,
+          error: 'cancelled by user',
+        },
+      })
+      .catch((e) => logger.error(`poll: could not mark run ${runId} cancelled:`, e));
+    await streamLogToDb(runId, 'sys', 'cancelled by user', 'warn').catch(() => {});
+    return;
+  }
 
   const rl = err instanceof RateLimitError ? err : detectRateLimit(err);
   if (rl) {
