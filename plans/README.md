@@ -15,6 +15,8 @@ This plan set supersedes an earlier 11-plan draft. Scope was trimmed aggressivel
 7. [Hardening](./07-hardening.md) — rate-limit → `deferred`, retries w/ backoff, monthly budget, min interval, research caps, failure-notice emails
 8. [Deploy + Polish](./08-deploy-polish.md) — GH Actions → GHCR → existing Watchtower (label-scoped); cron collision hints; next-5-fires preview; AccountInfo badge; token/cost capture; error formatting; run-dir cleanup; nightly pg_dump
 
+**Shipped**: 1, 2, 3, 4. **Next**: 5.
+
 ## Decisions Log
 
 Locked during planning. Change here first if you revisit; then sweep referencing plans.
@@ -54,6 +56,11 @@ Locked during planning. Change here first if you revisit; then sweep referencing
 | node-cron version | v4.x (async `stop()`/`destroy()`) | Latest; registry awaits both on unregister/shutdown |
 | Worker test strategy | Testcontainers-backed Vitest integration tests at `packages/worker/src/__tests__/*.test.ts` — spins a throwaway `postgres:16-alpine`, runs `prisma migrate deploy`, exercises `onFire`/`poll.tick`/`staleRecovery` against real DB | Cron-tick acceptance is proven in shell verification (70s real time); unit-level tests cover the data-layer contracts without slow timers |
 | Stale-run predicate | `status='running' AND (heartbeat_at IS NULL OR heartbeat_at < now()-5min)` → reset to `queued`, `started_at = NULL`, `heartbeat_at = NULL` | NULL heartbeat covers crash-before-first-heartbeat |
+| Plan 4 transitional state | After Stage 1, runs stay `status='running'` (no flip to success, no `finishedAt`); heartbeat interval stops updating. Plan 5 wraps them up. Between plans, stale recovery may reset a running run to queued after 5 min and the poll loop re-runs Stage 1 — acceptable churn for a short transitional window. | Plan 4's scope explicitly stops at Stage 1; chaining Stage 2 is plan 5's responsibility |
+| Research runs dir | Configurable via `RUNS_DIR` env var (default `/app/data/runs`). Worker integration tests set this to a `mkdtemp` dir so SDK mock writes don't collide with the production bind mount. | Testability; plan 4 originally hardcoded the path |
+| SDK log mapping | `assistant.text` → `info` row; `tool_use` → `"tool: name(argsJSON)"` truncated at 200 chars; `tool_result` in `user` message → `"result: ..."` truncated at 200 chars (error level if `is_error`); `result.is_error` → `"result <subtype>: ..."` at error level. `system`/partial/status messages skipped. Full research JSON never logged — only the `sys` summary line. | Keeps `run_logs` useful for the live tail without dumping the full research payload (already in `runs.research_raw`) |
+| Worker image extras | `git` and `curl` added to the worker Dockerfile in plan 4 for the SDK's Bash tool (curl for RSS, git for SDK housekeeping). | Bookworm-slim doesn't ship either by default |
+| SDK import surface | `@anthropic-ai/claude-agent-sdk` is imported only from `packages/worker/src/pipeline/*`. `web` and `shared` must never import it. | Keeps the native Claude Code binary out of the Next.js bundle and the edge middleware |
 
 ## Plan Format
 

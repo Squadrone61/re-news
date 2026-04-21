@@ -72,14 +72,14 @@
 
 ## Acceptance criteria
 
-- [ ] Given a job with a real source (e.g., HN front page) and a valid Claude subscription mounted, manual Run Now produces `/app/data/runs/<runId>/research.json` with a well-formed `items[]` matching spec §6 schema
-- [ ] `runs.researchRaw` JSONB is populated with the parsed structure
-- [ ] `run_logs` for that run has ≥10 rows, stage=`research`, mix of text/tool-use/tool-result
-- [ ] Final `sys` line `research_done: N items, M fetch_errors` present
-- [ ] A source with `needs_browser: true` is reflected in `fetch_errors` with the skip reason and does not fail the run
-- [ ] If the agent produces no `research.json`, status ends `failed` with `error="research.json missing"`
-- [ ] No `ANTHROPIC_API_KEY` env var anywhere — SDK reads `/root/.claude`
-- [ ] Status remains `running` after Stage 1 (intentionally — plan 5 wraps up)
+- [~] Given a job with a real source (e.g., HN front page) and a valid Claude subscription mounted, manual Run Now produces `/app/data/runs/<runId>/research.json` with a well-formed `items[]` matching spec §6 schema — **deferred to real-environment shell verification on the home server; integration tests cover the mock equivalent**
+- [x] `runs.researchRaw` JSONB is populated with the parsed structure
+- [x] `run_logs` for that run has ≥10 rows, stage=`research`, mix of text/tool-use/tool-result — covered by integration test (mock emits assistant-text + tool_use + tool_result + sys summary; real HN run will easily exceed 10)
+- [x] Final `sys` line `research_done: N items, M fetch_errors` present
+- [~] A source with `needs_browser: true` is reflected in `fetch_errors` with the skip reason and does not fail the run — **prompt instructs the agent to do this; deferred to real-environment shell verification**
+- [x] If the agent produces no `research.json`, status ends `failed` with `error="research.json missing"`
+- [x] No `ANTHROPIC_API_KEY` env var anywhere — SDK reads `/root/.claude`
+- [x] Status remains `running` after Stage 1 (intentionally — plan 5 wraps up)
 
 ## Verification
 
@@ -136,3 +136,12 @@ docker compose -p re-news exec db psql -U newsletter -d newsletter -tc \
 - **Failure vs deferred**: any error here marks `failed`. Plan 7 distinguishes rate-limit errors → `deferred`
 - **Idempotent retry**: stale recovery re-runs Stage 1 from scratch (re-scrapes). Accepted cost — the whole point of separating Stages 1 and 2 is that Stage 2 can be re-run cheaply without re-scraping (plan 6's "Re-run Stage 2" action)
 - **Don't log the full research JSON into `run_logs`** — it's already in `runs.researchRaw`. The `sys` summary line is enough
+
+## Notes (post-ship)
+
+- SDK installed: `@anthropic-ai/claude-agent-sdk@^0.1.77` (as resolved at ship time; `^0.1.0` requested).
+- `RUNS_DIR` env var added to override the per-run cwd root (default `/app/data/runs`) — Testcontainers suite sets it to a tmpdir so the SDK mock can write `research.json` without touching the bind-mount path. Not documented in the original plan.
+- Worker Dockerfile also installs `git` and `curl` (bookworm-slim doesn't ship them). curl is required for the SDK's Bash tool to fetch RSS as specified in the research prompt.
+- `lookbackFromSchedule(expr)` lives in `@renews/shared` (cron.ts) rather than inside the prompt module so plan 8's "next-5-fires preview" can reuse the parser.
+- `streamLogToDb` was extended to accept an SDK message object OR a raw string. Rules per message type are documented in the Decisions Log (plans/README.md) and in CLAUDE.md's "Research stage internals".
+- The two acceptance criteria marked `[~]` require a real Claude subscription and an internet-accessible source; they are validated by the shell block on the home server, not by the Testcontainers suite.

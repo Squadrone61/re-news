@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Status
 
-Plans 1–3 landed. The 3-service compose stack boots (`web`, `worker`, `db`), Prisma schema is migrated, session-based auth + full jobs CRUD ship against a per-user ownership model, and the worker now embeds node-cron scheduling + a 5s queued-run poll with heartbeat + stale-run recovery. A stub pipeline flips `queued → running → success`; plan 4 replaces the stub with the real research stage.
+Plans 1–4 landed. The 3-service compose stack boots (`web`, `worker`, `db`), Prisma schema is migrated, session-based auth + full jobs CRUD ship against a per-user ownership model, and the worker embeds node-cron scheduling + a 5s queued-run poll with heartbeat + stale-run recovery. Stage 1 (research) now runs through the Claude Agent SDK with tools enabled: `runResearch` streams SDK messages (assistant text, tool_use, tool_result) into `run_logs`, reads `research.json` from the per-run cwd, applies defense-in-depth truncation (≤25 items, ≤800 chars each), and persists the parsed payload to `runs.researchRaw`. **Runs intentionally stay in `running` after Stage 1** — plan 5 will chain Stage 2 and flip to `success`. Next: plan 5 (summary + render + email).
 
 **The implementation plans in `plans/` are the authoritative source of truth** — start with `plans/README.md` (index + Decisions Log), then read the relevant plan file. `plans/spec.md` is the original product spec; it has been kept in sync with locked decisions but the 8 plan files are where actionable implementation detail lives.
 
-**Build order**: 8 sequenced plans in `plans/` (01-skeleton → 08-deploy-polish). Each plan has Goal, Dependencies, Scope, Tasks, Acceptance Criteria, and a Verification block with shell commands. Work them in order. Completed: 1, 2, 3. Next: 4 (research agent).
+**Build order**: 8 sequenced plans in `plans/` (01-skeleton → 08-deploy-polish). Each plan has Goal, Dependencies, Scope, Tasks, Acceptance Criteria, and a Verification block with shell commands. Work them in order. Completed: 1, 2, 3, 4. Next: 5 (summary + render + email).
 
 ## What We're Building
 
@@ -64,6 +64,14 @@ Monorepo layout under `packages/{web,worker,shared}` with Prisma schema at the r
 - Reconcile runs every 60s (and on boot). A schedule-string change = unregister + register; no hot-swap needed.
 - Poll loop uses an in-flight flag so overlapping 5s ticks can't stack while a run is executing. Combined with an atomic `updateMany({where:{id, status:'queued'}, data:{status:'running', ...}})` this gives exactly-once semantics with a single worker; the atomic claim is still correct if we ever run concurrent workers.
 - `onFire` re-reads the job from DB before inserting a run — handles the race where user disables between cron firing and the insert.
+
+**Research stage internals (plan 4).**
+- `@anthropic-ai/claude-agent-sdk` is imported **only** from `packages/worker` — never from `web` or `shared`. The SDK bundles a native Claude Code binary; wiring it into the edge-bundled web build is pointless and risks a bundler trying to statically resolve it.
+- Per-run cwd is `${RUNS_DIR}/<runId>` — defaults to `/app/data/runs` in the container, overrideable via `RUNS_DIR` for tests (Testcontainers suite uses a tmpdir). The SDK writes `research.json` there; `runResearch` reads it back.
+- Worker Dockerfile installs `git` and `curl` alongside `openssl`/`ca-certificates` — the SDK's Bash tool uses curl for RSS fetching and git for its own housekeeping.
+- `streamLogToDb` accepts either a raw string or an SDK message object. For SDK messages it emits one row per content block: `assistant` text → `info`, `tool_use` → `"tool: name(args)"` (args truncated to 200 chars), `tool_result` in a `user` message → `"result: ..."` (truncated to 200 chars), `is_error` flips level to `error`, `result` messages with `is_error: true` log the subtype + errors. `system`/partial-assistant/status messages are intentionally skipped — too noisy. Full research JSON is **never** logged (already in `runs.researchRaw`); only the `sys` summary `research_done: N items, M fetch_errors` goes through.
+- Lookback window for the research prompt is derived from the job's cron cadence via `lookbackFromSchedule` in `@renews/shared`: ≥7d → "last 7 days", ≥24h → "last 24 hours", ≥1h → "last 6 hours", else "recent".
+- `poll.execute` loads the run with `include: { job: true }` before calling `runResearch`. Don't refactor this to pass the job around earlier — the single DB read after claim is fine, and it guarantees the latest job state (e.g. if user edited `modelResearch` between enqueue and pickup).
 
 **Email delivery uses Gmail SMTP via Nodemailer** (shared admin-owned sender, not Resend).
 - Admin configures one Gmail account + app password in `/settings`. All users' newsletters send from that address; each job has its own `recipient_email`.
