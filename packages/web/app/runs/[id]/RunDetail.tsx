@@ -155,6 +155,17 @@ export function RunDetail({ initial }: { initial: Initial }) {
         </button>
         <button
           type="button"
+          disabled={!initial.renderedOutput || initial.job.outputFormat === 'json'}
+          onClick={() =>
+            printNewsletter(initial.renderedOutput, initial.job.outputFormat, initial.job.name)
+          }
+          style={btn}
+          title="Open in a new window and launch the browser print dialog (choose 'Save as PDF')"
+        >
+          Print / Save as PDF
+        </button>
+        <button
+          type="button"
           disabled={busy !== null || !initial.researchRaw}
           onClick={() => action(`/api/runs/${initial.id}/rerun-stage2`, 'Re-run Stage 2')}
           style={btn}
@@ -270,6 +281,40 @@ function StageLogs({ stage, rows }: { stage: Stage; rows: LogRow[] }) {
         </div>
       )}
     </div>
+  );
+}
+
+function printNewsletter(
+  rendered: string | null,
+  format: 'markdown' | 'html' | 'json',
+  title: string,
+) {
+  if (!rendered || format === 'json') return;
+  const body = format === 'html' ? rendered : (marked.parse(rendered, { async: false }) as string);
+  const doc =
+    format === 'html'
+      ? body
+      : `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:720px;margin:2rem auto;padding:0 1rem;line-height:1.5;color:#222}pre{white-space:pre-wrap}@media print{body{margin:0}}</style></head><body>${body}</body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) return;
+  w.document.open();
+  w.document.write(doc);
+  w.document.close();
+  const trigger = () => {
+    w.focus();
+    w.print();
+  };
+  if (w.document.readyState === 'complete') {
+    setTimeout(trigger, 100);
+  } else {
+    w.addEventListener('load', () => setTimeout(trigger, 100));
+  }
+}
+
+function escapeHtml(s: string) {
+  return s.replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string,
   );
 }
 
