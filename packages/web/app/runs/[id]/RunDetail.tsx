@@ -2,6 +2,7 @@
 import { marked } from 'marked';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { LocalTime } from '../../_components/LocalTime';
 import { StopRunButton } from '../../_components/StopRunButton';
 import { useToast } from '../../_components/Toaster';
 
@@ -116,8 +117,7 @@ export function RunDetail({ initial }: { initial: Initial }) {
       <header style={{ marginBottom: '1rem' }}>
         <h1 style={{ margin: '0 0 0.3rem' }}>{initial.job.name}</h1>
         <div style={{ color: '#888', fontSize: '0.9em' }}>
-          Run {initial.id} · created {new Date(initial.createdAt).toLocaleString()} · duration{' '}
-          {duration}
+          Run {initial.id} · created <LocalTime iso={initial.createdAt} /> · duration {duration}
           {initial.skipResearch && (
             <span
               style={{
@@ -273,7 +273,9 @@ function StageLogs({ stage, rows }: { stage: Stage; rows: LogRow[] }) {
                   marginBottom: '0.15rem',
                 }}
               >
-                <span style={{ color: '#666' }}>{new Date(r.ts).toLocaleTimeString()} </span>
+                <span style={{ color: '#666' }}>
+                  <LocalTime iso={r.ts} mode="time" />{' '}
+                </span>
                 {r.message}
               </div>
             ))
@@ -400,16 +402,20 @@ function ErrorDisplay({ message, nextRunAt }: { message: string; nextRunAt: stri
 function classifyError(msg: string): {
   icon: string;
   title: string;
-  describe: (raw: string, nextRunAt: string | null) => string;
+  describe: (raw: string, nextRunAt: string | null) => React.ReactNode;
 } {
   if (msg.startsWith('rate_limit:') || /rate[_\s-]?limit/i.test(msg)) {
     return {
       icon: '⏳',
       title: 'Claude rate limit hit',
       describe: (_r, next) =>
-        next
-          ? `Window resets at ${new Date(next).toLocaleString()}. Try Re-run after that time.`
-          : 'Window resets in ~5 hours. Try Re-run after that.',
+        next ? (
+          <>
+            Window resets at <LocalTime iso={next} />. Try Re-run after that time.
+          </>
+        ) : (
+          'Window resets in ~5 hours. Try Re-run after that.'
+        ),
     };
   }
   if (msg.startsWith('email send:')) {
@@ -454,8 +460,8 @@ function UsageBadges({
   };
   return (
     <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-      {tokensIn != null && <span style={chip}>in: {tokensIn.toLocaleString()}</span>}
-      {tokensOut != null && <span style={chip}>out: {tokensOut.toLocaleString()}</span>}
+      {tokensIn != null && <span style={chip}>in: {tokensIn.toLocaleString('en-US')}</span>}
+      {tokensOut != null && <span style={chip}>out: {tokensOut.toLocaleString('en-US')}</span>}
       {costUsd != null && <span style={chip}>${Number(costUsd).toFixed(4)}</span>}
     </div>
   );

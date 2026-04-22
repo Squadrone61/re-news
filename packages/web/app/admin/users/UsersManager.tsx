@@ -1,6 +1,7 @@
 'use client';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { LocalTime } from '../../_components/LocalTime';
 import { useToast } from '../../_components/Toaster';
 
 type U = { id: string; email: string; isAdmin: boolean; createdAt: string };
@@ -107,7 +108,9 @@ export function UsersManager({ meId, initial }: { meId: string; initial: U[] }) 
                   disabled={u.id === meId}
                 />
               </td>
-              <td style={td}>{new Date(u.createdAt).toLocaleString()}</td>
+              <td style={td}>
+                <LocalTime iso={u.createdAt} />
+              </td>
               <td style={{ ...td, textAlign: 'right' }}>
                 <button type="button" onClick={() => resetPassword(u)} style={btnGhost}>
                   Reset password
