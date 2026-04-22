@@ -26,8 +26,11 @@ const BROWSER_TOOLS = [
 let cachedPlaywrightMcpCli: string | null = null;
 function resolvePlaywrightMcpCli(): string {
   if (cachedPlaywrightMcpCli) return cachedPlaywrightMcpCli;
+  // @playwright/mcp's exports map does not expose cli.js directly, but
+  // package.json is always listed. Resolve that and join the CLI file name.
   const req = createRequire(import.meta.url);
-  cachedPlaywrightMcpCli = req.resolve('@playwright/mcp/cli.js');
+  const pkgJsonPath = req.resolve('@playwright/mcp/package.json');
+  cachedPlaywrightMcpCli = path.join(path.dirname(pkgJsonPath), 'cli.js');
   return cachedPlaywrightMcpCli;
 }
 
