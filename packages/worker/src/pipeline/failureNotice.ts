@@ -5,7 +5,7 @@ export async function sendFailureNotice(runId: string): Promise<void> {
   try {
     const run = await prisma.run.findUnique({
       where: { id: runId },
-      include: { job: { include: { user: true } } },
+      include: { job: true },
     });
     if (!run) return;
 
@@ -20,11 +20,21 @@ export async function sendFailureNotice(runId: string): Promise<void> {
       return;
     }
 
+    const admin = await prisma.user.findFirst({
+      where: { isAdmin: true },
+      orderBy: { createdAt: 'asc' },
+      select: { email: true },
+    });
+    if (!admin) {
+      await streamLogToDb(runId, 'sys', 'failure-notice skipped: no admin user', 'warn');
+      return;
+    }
+
     const base = process.env.BASE_URL ?? 'http://localhost:3100';
     const when = (run.finishedAt ?? new Date()).toISOString();
     const errText = run.error ?? 'unknown error';
     const jobName = run.job.name;
-    const to = run.job.user.email;
+    const to = admin.email;
 
     const transport = nodemailer.createTransport({
       service: 'gmail',
