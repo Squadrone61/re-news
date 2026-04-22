@@ -36,6 +36,6 @@ COPY --from=build /app/packages/worker ./packages/worker
 # packages Chromium needs; PLAYWRIGHT_BROWSERS_PATH keeps the binary out of
 # the user homedir.
 RUN PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-    node /app/node_modules/playwright/cli.js install --with-deps chromium \
+    node /app/packages/worker/node_modules/playwright/cli.js install --with-deps chromium \
   && rm -rf /var/lib/apt/lists/*
 CMD ["node", "packages/worker/dist/index.js"]
