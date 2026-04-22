@@ -62,7 +62,7 @@ Monorepo: `packages/{web,worker,shared}` with Prisma schema at root. Per-run scr
 
 **`./data` is RO into web, RW into worker.** Web has the HTTP surface; a path-traversal bug there must not touch per-run artifacts. If a web feature genuinely needs to write, add a narrow API the worker owns.
 
-**Playwright MCP is deferred.** `sources[].needs_browser` is persisted; the research agent skips such sources with a `fetch_errors` entry rather than failing.
+**Playwright MCP is spawned per run, only when needed.** If any source on the job has `needs_browser: true`, `pipeline/research.ts` adds an `mcpServers.playwright` stdio subprocess (`@playwright/mcp` + bundled Chromium, `--isolated`, per-run `--output-dir`) and extends `allowedTools` with the `mcp__playwright__browser_*` subset (navigate, snapshot, wait_for, console_messages, click, press_key, handle_dialog, hover). Jobs with no browser sources spawn no Chromium. Browser failures surface as `fetch_errors` entries (`browser_failed` / `browser_timeout`), not run failures. Chromium is baked into the worker image via `playwright install --with-deps chromium`; `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright` keeps it out of `$HOME`. Worker `mem_limit` is 3g to absorb a headless tab.
 
 ## Data model (one-line each)
 

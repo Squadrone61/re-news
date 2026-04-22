@@ -24,10 +24,18 @@ RUN pnpm --filter @renews/worker build
 
 FROM base AS runtime
 ENV NODE_ENV=production
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 WORKDIR /app
 COPY --from=build /app/package.json /app/pnpm-workspace.yaml /app/pnpm-lock.yaml /app/tsconfig.base.json ./
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages/shared ./packages/shared
 COPY --from=build /app/packages/worker ./packages/worker
+# Install Chromium + its system deps for the Playwright MCP server used by
+# research runs with needs_browser sources. --with-deps pulls the apt
+# packages Chromium needs; PLAYWRIGHT_BROWSERS_PATH keeps the binary out of
+# the user homedir.
+RUN PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    node /app/node_modules/playwright/cli.js install --with-deps chromium \
+  && rm -rf /var/lib/apt/lists/*
 CMD ["node", "packages/worker/dist/index.js"]

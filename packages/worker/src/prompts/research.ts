@@ -23,7 +23,7 @@ function renderSources(sources: SourceEntry[]): string {
     .map((s) => {
       const bits = [`- ${s.url}`];
       if (s.hint) bits.push(`(hint: ${s.hint})`);
-      if (s.needs_browser) bits.push('[skip: Playwright deferred — record as fetch_error]');
+      if (s.needs_browser) bits.push('[use browser]');
       return bits.join('  ');
     })
     .join('\n');
@@ -31,6 +31,7 @@ function renderSources(sources: SourceEntry[]): string {
 
 export function buildResearchPrompt(job: Job, outputPath: string): string {
   const sources = parseSources(job.sources);
+  const hasBrowserSources = sources.some((s) => s.needs_browser);
   const lookback = lookbackFromSchedule(job.schedule);
   return [
     'You are a research agent. Gather recent, relevant content from the sources below related to the topic.',
@@ -43,7 +44,9 @@ export function buildResearchPrompt(job: Job, outputPath: string): string {
     'SOURCES:',
     renderSources(sources),
     '',
-    'For each source, pick the best fetch method: WebFetch for static HTML; Bash + curl for RSS feeds; skip with a fetch_errors entry if the source is marked [skip: Playwright deferred] (reason: "needs_browser, Playwright deferred").',
+    hasBrowserSources
+      ? 'For each source, pick the best fetch method: WebFetch for static HTML; Bash + curl for RSS feeds; for sources marked [use browser], call mcp__playwright__browser_navigate, then mcp__playwright__browser_snapshot to read the rendered content. Dismiss consent banners with mcp__playwright__browser_click when they block content, and use mcp__playwright__browser_wait_for if the page is lazy-loaded. If the browser fails (navigation timeout, crash, blank page), record a fetch_errors entry (reason: "browser_failed" | "browser_timeout") and move on.'
+      : 'For each source, pick the best fetch method: WebFetch for static HTML; Bash + curl for RSS feeds.',
     '',
     'If a fetch succeeds HTTP-wise but returns a paywall stub, login redirect, cookie consent wall, or a JS-shell page with no real content, record a fetch_errors entry (reason: "paywall" | "login_required" | "js_required" | "empty_shell") instead of dropping it silently or inventing content.',
     '',

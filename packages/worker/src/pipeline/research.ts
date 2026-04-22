@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { Job } from '@prisma/client';
@@ -10,6 +11,35 @@ import { type UsageTotals, addUsage, emptyUsage, extractUsage } from './usage.js
 const RUNS_ROOT = process.env.RUNS_DIR ?? '/app/data/runs';
 const MAX_ITEMS = 25;
 const MAX_CONTENT_CHARS = 800;
+
+const BROWSER_TOOLS = [
+  'mcp__playwright__browser_navigate',
+  'mcp__playwright__browser_snapshot',
+  'mcp__playwright__browser_wait_for',
+  'mcp__playwright__browser_console_messages',
+  'mcp__playwright__browser_click',
+  'mcp__playwright__browser_press_key',
+  'mcp__playwright__browser_handle_dialog',
+  'mcp__playwright__browser_hover',
+];
+
+let cachedPlaywrightMcpCli: string | null = null;
+function resolvePlaywrightMcpCli(): string {
+  if (cachedPlaywrightMcpCli) return cachedPlaywrightMcpCli;
+  const req = createRequire(import.meta.url);
+  cachedPlaywrightMcpCli = req.resolve('@playwright/mcp/cli.js');
+  return cachedPlaywrightMcpCli;
+}
+
+function jobHasBrowserSources(job: Job): boolean {
+  const raw = job.sources;
+  if (!Array.isArray(raw)) return false;
+  return raw.some((s) => {
+    if (!s || typeof s !== 'object') return false;
+    const o = s as Record<string, unknown>;
+    return o.needs_browser === true || o.needsBrowser === true;
+  });
+}
 
 export type ResearchJson = {
   fetched_at?: string;
@@ -30,6 +60,25 @@ export async function runResearch(
   await fs.mkdir(cwd, { recursive: true });
   const researchPath = path.join(cwd, 'research.json');
 
+  const useBrowser = jobHasBrowserSources(job);
+  const allowedTools = ['WebFetch', 'WebSearch', 'Bash', 'Read', 'Write', 'Task'];
+  const mcpServers: Record<string, { command: string; args?: string[] }> = {};
+  if (useBrowser) {
+    allowedTools.push(...BROWSER_TOOLS);
+    mcpServers.playwright = {
+      command: process.execPath,
+      args: [
+        resolvePlaywrightMcpCli(),
+        '--browser=chromium',
+        '--headless',
+        '--isolated',
+        '--output-dir',
+        path.join(cwd, 'browser'),
+      ],
+    };
+    await streamLogToDb(runId, 'sys', 'browser: Playwright MCP enabled for this run');
+  }
+
   const controller = new AbortController();
   const cancelWatch = setInterval(() => {
     prisma.run
@@ -46,12 +95,13 @@ export async function runResearch(
     for await (const msg of query({
       prompt: buildResearchPrompt(job, researchPath),
       options: {
-        allowedTools: ['WebFetch', 'WebSearch', 'Bash', 'Read', 'Write', 'Task'],
+        allowedTools,
         permissionMode: 'acceptEdits',
         cwd,
         model: job.modelResearch,
         maxTurns: 40,
         abortController: controller,
+        ...(useBrowser ? { mcpServers } : {}),
       },
     })) {
       addUsage(usage, extractUsage(msg));
