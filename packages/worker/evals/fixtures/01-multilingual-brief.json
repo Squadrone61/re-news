@@ -1,0 +1,41 @@
+{
+  "name": "01-multilingual-brief",
+  "job": {
+    "topic": "Turkish parliament news",
+    "basePrompt": "Türkçe bir bülten yaz. İçerik tamamen Türkçe olmalı. Her madde 2-3 cümle olsun.",
+    "maxItems": 4,
+    "modelSummary": "claude-haiku-4-5"
+  },
+  "research": {
+    "fetched_at": "2026-04-20T12:00:00Z",
+    "items": [
+      {
+        "source": "https://example.tr/haber",
+        "title": "Meclis yeni yasa tasarısını görüşecek",
+        "url": "https://example.tr/haber/1",
+        "published_at": "2026-04-19T09:00:00Z",
+        "content": "Türkiye Büyük Millet Meclisi bu hafta genel kurul gündemine vergi reformunu içeren yeni bir tasarıyı alıyor. Muhalefet itiraz ederken iktidar partisi değişikliğin hızla yasalaşmasını istiyor."
+      },
+      {
+        "source": "https://example.tr/haber",
+        "title": "Dışişleri komisyonu toplandı",
+        "url": "https://example.tr/haber/2",
+        "published_at": "2026-04-19T14:00:00Z",
+        "content": "Dışişleri komisyonu bu sabah bölgesel güvenlik meseleleri üzerine kapalı oturum gerçekleştirdi. Komisyon başkanı toplantı sonrası kısa bir açıklama yaptı."
+      },
+      {
+        "source": "https://example.tr/haber",
+        "title": "Bütçe görüşmelerinde anlaşma sağlanamadı",
+        "url": "https://example.tr/haber/3",
+        "published_at": "2026-04-18T18:00:00Z",
+        "content": "Plan ve bütçe komisyonunda muhalefet ile iktidar arasındaki görüşmeler uzasa da somut bir anlaşma çıkmadı. Tartışma özellikle eğitim ödeneği kaleminde yoğunlaştı."
+      }
+    ],
+    "fetch_errors": []
+  },
+  "assertions": {
+    "language": "tr",
+    "itemsMax": 4,
+    "minBodyWords": 15
+  }
+}

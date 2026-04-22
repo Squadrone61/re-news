@@ -87,7 +87,7 @@ async function execute(runId: string): Promise<void> {
     await persistUsage(runId, usage);
     await prisma.run.update({
       where: { id: runId },
-      data: { status: 'success', finishedAt: new Date(), heartbeatAt: null },
+      data: { status: 'success', finishedAt: new Date(), heartbeatAt: null, error: null },
     });
     await prisma.job.update({
       where: { id: run.jobId },

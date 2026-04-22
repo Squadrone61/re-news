@@ -1,0 +1,90 @@
+{
+  "name": "04-too-many-items",
+  "job": {
+    "topic": "football scores worldwide",
+    "basePrompt": "Football results digest. English. Headlines name the match and result.",
+    "maxItems": 5,
+    "modelSummary": "claude-haiku-4-5"
+  },
+  "research": {
+    "fetched_at": "2026-04-20T12:00:00Z",
+    "items": [
+      {
+        "source": "https://s1.example/rss",
+        "title": "Arsenal 2-1 Chelsea",
+        "url": "https://s1.example/1",
+        "published_at": "2026-04-19T18:00:00Z",
+        "content": "Late goal from substitute seals win for Arsenal in derby."
+      },
+      {
+        "source": "https://s1.example/rss",
+        "title": "Liverpool 3-0 Everton",
+        "url": "https://s1.example/2",
+        "published_at": "2026-04-19T16:00:00Z",
+        "content": "Dominant performance from Liverpool in the Merseyside derby."
+      },
+      {
+        "source": "https://s1.example/rss",
+        "title": "Man City 1-1 Tottenham",
+        "url": "https://s1.example/3",
+        "published_at": "2026-04-19T14:00:00Z",
+        "content": "Tottenham come from behind to secure a draw at the Etihad."
+      },
+      {
+        "source": "https://s1.example/rss",
+        "title": "Real Madrid 4-2 Valencia",
+        "url": "https://s1.example/4",
+        "published_at": "2026-04-19T21:00:00Z",
+        "content": "Real Madrid run riot at the Bernabeu despite late Valencia push."
+      },
+      {
+        "source": "https://s1.example/rss",
+        "title": "Barcelona 2-0 Sevilla",
+        "url": "https://s1.example/5",
+        "published_at": "2026-04-19T20:00:00Z",
+        "content": "Barcelona keep clean sheet against Sevilla at home."
+      },
+      {
+        "source": "https://s1.example/rss",
+        "title": "Bayern 3-1 Dortmund",
+        "url": "https://s1.example/6",
+        "published_at": "2026-04-19T17:30:00Z",
+        "content": "Der Klassiker goes to Bayern after strong second half showing."
+      },
+      {
+        "source": "https://s1.example/rss",
+        "title": "PSG 2-2 Marseille",
+        "url": "https://s1.example/7",
+        "published_at": "2026-04-19T19:00:00Z",
+        "content": "Le Classique ends in a dramatic 2-2 draw in Paris."
+      },
+      {
+        "source": "https://s1.example/rss",
+        "title": "Juventus 1-0 Inter",
+        "url": "https://s1.example/8",
+        "published_at": "2026-04-19T18:30:00Z",
+        "content": "Juventus edge past Inter with a single goal at the Allianz Stadium."
+      },
+      {
+        "source": "https://s1.example/rss",
+        "title": "Ajax 2-1 PSV",
+        "url": "https://s1.example/9",
+        "published_at": "2026-04-19T15:00:00Z",
+        "content": "Ajax come from behind to beat PSV in the Dutch classic."
+      },
+      {
+        "source": "https://s1.example/rss",
+        "title": "Porto 3-2 Benfica",
+        "url": "https://s1.example/10",
+        "published_at": "2026-04-19T20:30:00Z",
+        "content": "Porto edge Benfica in a five-goal thriller in the Portuguese classic."
+      }
+    ],
+    "fetch_errors": []
+  },
+  "assertions": {
+    "language": "en",
+    "itemsMax": 5,
+    "minBodyWords": 15
+  }
+}

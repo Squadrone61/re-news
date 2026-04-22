@@ -29,7 +29,7 @@ function renderSources(sources: SourceEntry[]): string {
     .join('\n');
 }
 
-export function buildResearchPrompt(job: Job): string {
+export function buildResearchPrompt(job: Job, outputPath: string): string {
   const sources = parseSources(job.sources);
   const lookback = lookbackFromSchedule(job.schedule);
   return [
@@ -45,9 +45,20 @@ export function buildResearchPrompt(job: Job): string {
     '',
     'For each source, pick the best fetch method: WebFetch for static HTML; Bash + curl for RSS feeds; skip with a fetch_errors entry if the source is marked [skip: Playwright deferred] (reason: "needs_browser, Playwright deferred").',
     '',
-    'Deduplicate by URL and near-identical titles. Skip items older than the lookback window.',
+    'If a fetch succeeds HTTP-wise but returns a paywall stub, login redirect, cookie consent wall, or a JS-shell page with no real content, record a fetch_errors entry (reason: "paywall" | "login_required" | "js_required" | "empty_shell") instead of dropping it silently or inventing content.',
     '',
-    'Write ./research.json (in your working directory) with this EXACT schema:',
+    'Relevance: prefer primary sources over aggregators, recent items within the lookback window, and signal over repetition. The topic is the filter — if an item does not clearly relate to it, skip it rather than stretch.',
+    '',
+    'Balance: if one source threatens to fill most of the 25 slots, prefer breadth — cover more sources before deepening any single one. Readers lose trust when a "newsletter" is one outlet on repeat.',
+    '',
+    'Deduplicate aggressively. Treat as duplicates: identical canonical URLs (strip utm_*, ref, fbclid query params and trailing slashes before comparing), near-identical titles, and syndicated reposts of the same underlying story across sources. Keep the version from the most authoritative source.',
+    '',
+    'Skip items older than the lookback window.',
+    '',
+    `Write the output to this EXACT absolute path (do not use a relative path, do not use ~, do not write anywhere else): ${outputPath}`,
+    `If you delegate via the Task tool, include this exact absolute path in the subagent's prompt — subagent working directories are not guaranteed to match yours, so relative paths like ./research.json may land in the wrong place.`,
+    '',
+    'The file must match this EXACT schema:',
     '{',
     '  "fetched_at": "<ISO timestamp>",',
     '  "items": [',
@@ -59,6 +70,6 @@ export function buildResearchPrompt(job: Job): string {
     '}',
     '',
     'Do not invent items. Empty items[] is valid if nothing relevant was found.',
-    'Do not produce any other files. Your final action must be writing research.json.',
+    `Do not produce any other files. Your final action must be writing ${outputPath}.`,
   ].join('\n');
 }

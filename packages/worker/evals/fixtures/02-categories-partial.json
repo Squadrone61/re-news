@@ -1,0 +1,50 @@
+{
+  "name": "02-categories-partial",
+  "job": {
+    "topic": "tech industry weekly",
+    "basePrompt": "Weekly tech newsletter. Categories: AI, Hardware, Policy, Security. Group each item under one of those exact labels. English.",
+    "maxItems": 6,
+    "modelSummary": "claude-haiku-4-5"
+  },
+  "research": {
+    "fetched_at": "2026-04-20T12:00:00Z",
+    "items": [
+      {
+        "source": "https://techblog.example/feed",
+        "title": "Anthropic ships new reasoning model",
+        "url": "https://techblog.example/a",
+        "published_at": "2026-04-19T09:00:00Z",
+        "content": "Anthropic released a new model update focused on multi-step reasoning tasks. Benchmark scores show improvements on math and code, with modest cost increases."
+      },
+      {
+        "source": "https://techblog.example/feed",
+        "title": "OpenAI adjusts free tier rate limits",
+        "url": "https://techblog.example/b",
+        "published_at": "2026-04-19T10:00:00Z",
+        "content": "OpenAI quietly adjusted rate limits on its free tier to reduce abuse after a surge in scraping activity. Paid customers are unaffected by the change."
+      },
+      {
+        "source": "https://secdesk.example/rss",
+        "title": "Critical zero-day patched in widely used web server",
+        "url": "https://secdesk.example/c",
+        "published_at": "2026-04-18T20:00:00Z",
+        "content": "A zero-day vulnerability in a popular web server software was patched this week after active exploitation in the wild. Admins are urged to update immediately."
+      },
+      {
+        "source": "https://secdesk.example/rss",
+        "title": "New phishing campaign targets crypto wallets",
+        "url": "https://secdesk.example/d",
+        "published_at": "2026-04-17T11:00:00Z",
+        "content": "Researchers detailed a phishing campaign using lookalike domains to target self-custody crypto wallets. Losses are estimated in the low millions so far."
+      }
+    ],
+    "fetch_errors": []
+  },
+  "assertions": {
+    "language": "en",
+    "itemsMax": 6,
+    "allowedCategories": ["AI", "Hardware", "Policy", "Security"],
+    "requireCategoryOnEveryItem": true,
+    "minBodyWords": 20
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "name": "05-overlapping-items",
+  "job": {
+    "topic": "AI policy and regulation",
+    "basePrompt": "AI policy digest. English. 2-4 sentence bodies. Merge overlapping coverage of the same story.",
+    "maxItems": 5,
+    "modelSummary": "claude-haiku-4-5"
+  },
+  "research": {
+    "fetched_at": "2026-04-20T12:00:00Z",
+    "items": [
+      {
+        "source": "https://reuters.example/rss",
+        "title": "EU adopts final text of AI Liability Directive",
+        "url": "https://reuters.example/eu-ai-1",
+        "published_at": "2026-04-19T10:00:00Z",
+        "content": "The European Union formally adopted the final text of the AI Liability Directive, establishing a framework for damages claims tied to high-risk AI systems. Member states have 18 months to transpose."
+      },
+      {
+        "source": "https://bloomberg.example/rss",
+        "title": "Brussels signs off on AI liability rules, vendors brace for claims",
+        "url": "https://bloomberg.example/eu-ai-2",
+        "published_at": "2026-04-19T11:30:00Z",
+        "content": "Brussels gave final approval to rules letting consumers sue AI providers when automated decisions cause harm. Vendors warn of a coming wave of claims especially in hiring and credit scoring."
+      },
+      {
+        "source": "https://ft.example/rss",
+        "title": "EU AI liability directive enters into force",
+        "url": "https://ft.example/eu-ai-3",
+        "published_at": "2026-04-19T13:00:00Z",
+        "content": "The EU's AI Liability Directive entered into force, with industry groups warning about litigation risk and privacy groups calling the rules overdue."
+      },
+      {
+        "source": "https://techblog.example/rss",
+        "title": "UK launches consultation on copyright and AI training",
+        "url": "https://techblog.example/uk-ai",
+        "published_at": "2026-04-18T09:00:00Z",
+        "content": "The UK government opened a 12-week consultation on whether rights holders should be able to opt out of having their works used to train AI models."
+      }
+    ],
+    "fetch_errors": []
+  },
+  "assertions": {
+    "language": "en",
+    "itemsMax": 2,
+    "minBodyWords": 25
+  }
+}

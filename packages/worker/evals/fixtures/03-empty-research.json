@@ -1,0 +1,19 @@
+{
+  "name": "03-empty-research",
+  "job": {
+    "topic": "obscure niche with no news this week",
+    "basePrompt": "Weekly newsletter. English. 2-4 sentence bodies.",
+    "maxItems": 5,
+    "modelSummary": "claude-haiku-4-5"
+  },
+  "research": {
+    "fetched_at": "2026-04-20T12:00:00Z",
+    "items": [],
+    "fetch_errors": [
+      { "source": "https://example.com/rss", "reason": "no new items in lookback window" }
+    ]
+  },
+  "assertions": {
+    "allowEmpty": true
+  }
+}

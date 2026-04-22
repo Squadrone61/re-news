@@ -28,6 +28,7 @@ export async function runResearch(
 
   const cwd = path.join(RUNS_ROOT, runId);
   await fs.mkdir(cwd, { recursive: true });
+  const researchPath = path.join(cwd, 'research.json');
 
   const controller = new AbortController();
   const cancelWatch = setInterval(() => {
@@ -43,9 +44,9 @@ export async function runResearch(
 
   try {
     for await (const msg of query({
-      prompt: buildResearchPrompt(job),
+      prompt: buildResearchPrompt(job, researchPath),
       options: {
-        allowedTools: ['WebFetch', 'WebSearch', 'Bash', 'Read', 'Write'],
+        allowedTools: ['WebFetch', 'WebSearch', 'Bash', 'Read', 'Write', 'Task'],
         permissionMode: 'acceptEdits',
         cwd,
         model: job.modelResearch,
@@ -71,7 +72,6 @@ export async function runResearch(
   });
   if (cancelledAfterSdk?.cancelRequested) throw new CancelledError();
 
-  const researchPath = path.join(cwd, 'research.json');
   let raw: string;
   try {
     raw = await fs.readFile(researchPath, 'utf8');

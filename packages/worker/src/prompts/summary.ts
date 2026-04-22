@@ -14,11 +14,11 @@ export function buildSummaryPrompt(job: Job, research: unknown): string {
     '',
     "HONOR THE USER'S BRIEF (the user controls length, tone, structure via their brief):",
     '- Language: if the brief names a target language (e.g. "content should be in Turkish"), every string in the output MUST be in that language — subject, intro, headlines, bodies, categories.',
-    '- Length: if the brief specifies a per-item length (word count, sentence count, "brief"/"detailed"), honor it. Absent a directive, default to 2-4 sentence bodies with real substance — do not truncate for brevity.',
-    '- Categories: if the brief lists section names (e.g. "categories: A, B, C"), assign each item a `category` field using one of those exact labels. Distribute items across the listed categories; omit a category if nothing in the research fits rather than padding.',
+    '- Length: if the brief specifies a per-item length (word count, sentence count, "brief"/"detailed"), honor it. Absent a directive, default to 2-4 sentence bodies (roughly 30-60 words each) with real substance — do not truncate for brevity.',
+    '- Categories: if the brief lists section names (e.g. "categories: A, B, C"), every item\'s `category` must be one of those exact labels — do not invent new categories. Omit any listed category that has no matching items in the research rather than padding. Do not force every listed category to appear.',
     "- Headlines: name the event itself. Don't write 'X reacted to Y' when the story is Y — the body explains the event, the headline names it.",
     '- Tone / style / audience / ordering: whatever the brief says.',
-    '- Merge overlapping items before counting against the max.',
+    "- Merge overlapping items before counting against the max: combine them into one item whose body reflects the full picture, use the most authoritative source_url, and mention the corroborating angle from the other sources where useful. Do not just pick one and drop the others' context.",
     '',
     'OUTPUT SCHEMA (JSON, no fences):',
     '{',
@@ -38,6 +38,11 @@ export function buildSummaryPrompt(job: Job, research: unknown): string {
   ].join('\n');
 }
 
-export function buildRetryPrompt(): string {
-  return 'Your previous response violated a length rule or JSON shape. Re-emit strictly tighter JSON only — same schema, same max_items, no preamble.';
+export function buildRetryPrompt(reason: string): string {
+  return [
+    'Your previous response failed validation with this error:',
+    reason,
+    '',
+    'Re-emit the same newsletter strictly fixing that error. JSON only — same schema, same max_items, no preamble, no markdown fences. If the error was a length rule, tighten the offending field; if it was a shape error, fix the shape. Do not change anything unrelated.',
+  ].join('\n');
 }

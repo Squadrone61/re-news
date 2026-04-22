@@ -10,44 +10,78 @@ import {
 import { buildRetryPrompt, buildSummaryPrompt } from '../prompts/summary.js';
 import { type UsageTotals, addUsage, emptyUsage, extractUsage } from './usage.js';
 
+export type SummaryAttemptOptions = {
+  job: Job;
+  prompt: string;
+  usage?: UsageTotals;
+  onMessage?: (msg: unknown) => void | Promise<void>;
+};
+
+export async function attemptSummary(opts: SummaryAttemptOptions): Promise<StageTwo> {
+  const { job, prompt, usage, onMessage } = opts;
+  let output = '';
+  for await (const msg of query({
+    prompt,
+    options: {
+      allowedTools: [],
+      permissionMode: 'default',
+      model: job.modelSummary,
+      maxTurns: 1,
+    },
+  })) {
+    output += extractText(msg);
+    if (usage) addUsage(usage, extractUsage(msg));
+    if (onMessage) await onMessage(msg);
+  }
+  const json = extractJson(output);
+  const parsed = StageTwoSchema.parse(JSON.parse(json));
+  validateLengths(parsed, job.maxItems);
+  return parsed;
+}
+
+export async function runSummaryAttempts(
+  job: Job,
+  research: unknown,
+  usage: UsageTotals,
+  onMessage: (msg: unknown) => void | Promise<void>,
+  onRetry: (reason: string) => void | Promise<void>,
+): Promise<StageTwo> {
+  try {
+    return await attemptSummary({
+      job,
+      prompt: buildSummaryPrompt(job, research),
+      usage,
+      onMessage,
+    });
+  } catch (e) {
+    const reason = errMsg(e);
+    await onRetry(reason);
+    try {
+      return await attemptSummary({
+        job,
+        prompt: buildRetryPrompt(reason),
+        usage,
+        onMessage,
+      });
+    } catch (e2) {
+      throw new Error(`stage2 validation failed after retry: ${errMsg(e2)}`);
+    }
+  }
+}
+
 export async function runSummary(
   runId: string,
   job: Job,
   research: unknown,
   usage: UsageTotals = emptyUsage(),
 ): Promise<StageTwo> {
-  const attempt = async (prompt: string): Promise<StageTwo> => {
-    let output = '';
-    for await (const msg of query({
-      prompt,
-      options: {
-        allowedTools: [],
-        permissionMode: 'default',
-        model: job.modelSummary,
-        maxTurns: 1,
-      },
-    })) {
-      output += extractText(msg);
-      addUsage(usage, extractUsage(msg));
-      await streamLogToDb(runId, 'summary', msg);
-    }
-    const json = extractJson(output);
-    const parsed = StageTwoSchema.parse(JSON.parse(json));
-    validateLengths(parsed, job.maxItems);
-    return parsed;
-  };
-
-  let parsed: StageTwo;
-  try {
-    parsed = await attempt(buildSummaryPrompt(job, research));
-  } catch (e) {
-    await streamLogToDb(runId, 'sys', `stage2 retry: ${errMsg(e)}`);
-    try {
-      parsed = await attempt(buildRetryPrompt());
-    } catch (e2) {
-      throw new Error(`stage2 validation failed after retry: ${errMsg(e2)}`);
-    }
-  }
+  const parsed = await runSummaryAttempts(
+    job,
+    research,
+    usage,
+    (msg) => streamLogToDb(runId, 'summary', msg),
+    (reason) => streamLogToDb(runId, 'sys', `stage2 retry: ${reason}`),
+  );
 
   await prisma.run.update({
     where: { id: runId },
