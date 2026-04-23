@@ -46,7 +46,7 @@ Monorepo: `packages/{web,worker,shared}` with Prisma schema at root. Per-run scr
 
 **Settings PUT preserves the password.** Empty string, literal `"***"`, or `undefined` for `gmailAppPassword` means **no change** — only a new non-empty non-mask string writes it. Prevents accidental wipe on GET → form-submit.
 
-**Time/scheduling.** Don't set `TZ` in compose — bind-mount `/etc/localtime` + `/etc/timezone` (file, not directory) into `web` and `worker` so they inherit the host zone. Without this, `0 8 * * *` fires at 08:00 UTC. `db` doesn't need the mount.
+**Time/scheduling.** Set `TZ=Europe/Istanbul` on `web` and `worker`, and keep the `/etc/localtime` + `/etc/timezone` file bind-mounts. The bind-mounts alone aren't enough: when the host's `/etc/localtime` is a symlink (e.g. `→ /usr/share/zoneinfo/Europe/Istanbul`) and the container's `/etc/localtime` is also a symlink (e.g. `→ /usr/share/zoneinfo/Etc/UTC`), Docker follows both during the bind, so the host's tzdata ends up on disk at the path literally named `Etc/UTC`. `date`(1) reads contents and shows `+03`, but Node/ICU resolves `/etc/localtime`'s symlink *target path* as the zone name and sees `Etc/UTC` — so `new Date()`, `Intl`, node-cron and cron-parser all run in UTC and `0 8 * * *` fires at 08:00 UTC. The `TZ` env var bypasses this by telling ICU the zone directly. `db` doesn't need either.
 
 **SSE log stream is `runtime: 'nodejs'`** (iron-session + Prisma + long streams aren't edge-safe). Polls `run_logs` every 1s with `id > lastSeenId`; emits `event: status` on `runs.status` transitions. `RunLog.id` is `BigInt` — track as `bigint`, serialize via `.toString()`, never compare to `Number`.
 

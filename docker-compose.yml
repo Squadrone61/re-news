@@ -33,12 +33,15 @@ services:
       APP_VERSION: dev
       PORT: "3000"
       HOSTNAME: "0.0.0.0"
+      # Node/ICU resolves /etc/localtime's symlink *target path* (not contents)
+      # to identify the zone. The bind-mounts below put the right tzdata on
+      # disk but the symlink name still reads "Etc/UTC", so TZ must be set
+      # explicitly for Node's Date/Intl and node-cron to agree with the host.
+      TZ: Europe/Istanbul
     ports:
       - "3100:3000"
     volumes:
       - ./data:/app/data:ro
-      # Inherit host timezone so Node's Date, Intl, and cron-parser agree
-      # with node-cron running in the worker and with the user's wall clock.
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     labels:
@@ -58,11 +61,12 @@ services:
     environment:
       DATABASE_URL: postgres://newsletter:${DB_PASSWORD}@db:5432/newsletter
       CLAUDE_CODE_USE_SUBSCRIPTION: "1"
+      # See web's comment — TZ is required for Node/node-cron even with the
+      # /etc/localtime + /etc/timezone bind-mounts.
+      TZ: Europe/Istanbul
     volumes:
       - ${HOME}/.claude:/root/.claude
       - ./data:/app/data
-      # node-cron fires in the container's local TZ — mount the host's so
-      # "0 8 * * *" fires at 08:00 local wall clock, not 08:00 UTC.
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     labels:
