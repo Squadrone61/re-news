@@ -2,7 +2,7 @@ FROM node:20-bookworm-slim AS base
 ENV PNPM_HOME=/root/.local/share/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    openssl ca-certificates git curl \
+    openssl ca-certificates git curl python3 python-is-python3 \
   && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 WORKDIR /app
