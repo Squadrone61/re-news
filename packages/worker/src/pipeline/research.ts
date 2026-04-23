@@ -50,6 +50,16 @@ export type ResearchJson = {
   fetch_errors?: Array<Record<string, unknown>>;
 };
 
+async function researchFileUsable(p: string): Promise<boolean> {
+  try {
+    const raw = await fs.readFile(p, 'utf8');
+    JSON.parse(raw);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function runResearch(
   runId: string,
   job: Job,
@@ -114,7 +124,20 @@ export async function runResearch(
     if (controller.signal.aborted) throw new CancelledError();
     const rl = detectRateLimit(e);
     if (rl) throw rl;
-    throw e;
+    // Salvage: if research.json was already written and parses, a late SDK
+    // crash (e.g. a stray Read that tripped MaxFileReadTokenExceededError) is
+    // recoverable — the model's useful output is already on disk.
+    if (await researchFileUsable(researchPath)) {
+      const reason = e instanceof Error ? e.message : String(e);
+      await streamLogToDb(
+        runId,
+        'sys',
+        `research sdk error after research.json written, salvaging: ${reason}`,
+        'warn',
+      );
+    } else {
+      throw e;
+    }
   } finally {
     clearInterval(cancelWatch);
   }

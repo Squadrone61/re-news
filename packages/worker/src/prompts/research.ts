@@ -72,6 +72,8 @@ export function buildResearchPrompt(job: Job, outputPath: string): string {
     '  ]',
     '}',
     '',
+    'Tool note: the Read tool caps file content at ~25k tokens and throws on larger files. For any file you fetch with Bash/curl that may be large (RSS, HTML dumps), do not Read it raw — pipe through grep/head/sed in Bash, or use the Grep tool, or Read with offset/limit.',
+    '',
     'Do not invent items. Empty items[] is valid if nothing relevant was found.',
     `Do not produce any other files. Your final action must be writing ${outputPath}.`,
   ].join('\n');
