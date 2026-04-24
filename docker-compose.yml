@@ -38,15 +38,14 @@ services:
       # disk but the symlink name still reads "Etc/UTC", so TZ must be set
       # explicitly for Node's Date/Intl and node-cron to agree with the host.
       TZ: Europe/Istanbul
-    ports:
-      - "3100:3000"
+      COOKIE_SECURE: "1"
     volumes:
       - ./data:/app/data:ro
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
-    networks: [renews_net]
+    networks: [renews_net, proxy_net]
     mem_limit: 512m
     cpus: 1.0
     restart: unless-stopped
@@ -80,3 +79,6 @@ networks:
   renews_net:
     driver: bridge
     name: renews_net
+  proxy_net:
+    external: true
+    name: proxy_net

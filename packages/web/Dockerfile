@@ -31,4 +31,7 @@ COPY --from=build /app/packages/shared ./packages/shared
 COPY --from=build /app/packages/web ./packages/web
 EXPOSE 3000
 WORKDIR /app/packages/web
+COPY packages/web/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["pnpm", "start"]

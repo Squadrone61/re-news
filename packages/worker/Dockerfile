@@ -38,4 +38,7 @@ COPY --from=build /app/packages/worker ./packages/worker
 RUN PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     node /app/packages/worker/node_modules/playwright/cli.js install --with-deps chromium \
   && rm -rf /var/lib/apt/lists/*
+COPY packages/worker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["node", "packages/worker/dist/index.js"]

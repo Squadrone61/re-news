@@ -56,9 +56,11 @@ Monorepo: `packages/{web,worker,shared}` with Prisma schema at root. Per-run scr
 
 **Toasts are for action outcome.** `useToast()` from `app/_components/Toaster.tsx` (in-house, no dep). Form-redirect flows pass `?toast=<key>` to the destination; keys live in `REDIRECT_TOASTS` — add new keys to the registry, never hardcode at the call site. Inline field errors stay inline.
 
-**Migrations don't run on container start** (parallel boots would race). Always `make migrate` *before* a release that carries a new migration; Watchtower rolling `web`/`worker` against a stale schema crash-loops.
+**Migrations run on container start.** Both `web` and `worker` have an entrypoint wrapper (`packages/{web,worker}/entrypoint.sh`) that runs `pnpm prisma migrate deploy` before the main command. Prisma's advisory lock on `_prisma_migrations_lock` serialises concurrent callers, so simultaneous Watchtower restarts of web+worker are safe. This is what makes the Watchtower → GHCR auto-update flow work without a manual `make migrate` step. `make migrate` still exists for the one-shot case (migrate against a stopped stack), but the normal path is: push → CI builds → Watchtower pulls → entrypoint migrates → app starts.
 
 **Watchtower is shared with the host's other stacks.** Label-scoped (`WATCHTOWER_LABEL_ENABLE=true`). Only `renews_web` + `renews_worker` carry the enable label; `renews_db` is intentionally unlabeled — never auto-update a data service.
+
+**`web` is fronted by a Caddy reverse proxy**, not by a published host port. `web` joins both `renews_net` (for DB) and the externally-managed `proxy_net` (for Caddy). Caddy lives in its own stack at `/home/safa/caddy-proxy/`, binds only to the host's Tailscale IP (tailnet-only), terminates TLS with certs from Let's Encrypt via Cloudflare DNS-01, and routes by hostname (`renews.safaakyuz.com`). `COOKIE_SECURE=1` is set on `web` because TLS terminates at Caddy; iron-session needs it to issue `Secure` cookies. The `proxy_net` is declared `external: true` — the Caddy stack owns it, and `docker network create proxy_net` must have been run on the host before `make up`/`make deploy`.
 
 **`./data` is RO into web, RW into worker.** Web has the HTTP surface; a path-traversal bug there must not touch per-run artifacts. If a web feature genuinely needs to write, add a narrow API the worker owns.
 
