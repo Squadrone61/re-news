@@ -167,6 +167,9 @@ export async function runResearch(
 
   // Conductor didn't write research.json — salvage from sources/*.json.
   const sal = await salvageFromSources(cwd);
+  for (const s of sal.skipped) {
+    await streamLogToDb(runId, 'sys', `salvage skipped sources/${s.file}: ${s.reason}`, 'warn');
+  }
   if (sal.salvagedCount > 0) {
     const cleaned = await validateAndWarnLengths(runId, sal.research);
     await persist(runId, cleaned);
