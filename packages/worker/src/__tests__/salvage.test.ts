@@ -50,13 +50,20 @@ describe('salvageFromSources', () => {
     expect(r.research.fetch_errors).toEqual([{ code: 'blocked', detail: 'cf' }]);
   });
 
-  it('skips files that fail SourceBriefSchema validation', async () => {
+  it('skips unreadable / invalid-JSON / schema-failing files and reports them', async () => {
     await fs.writeFile(path.join(dir, 'sources', '0.json'), '{not json');
     await fs.writeFile(
       path.join(dir, 'sources', '1.json'),
-      JSON.stringify({ source_url: 'x', items: [], fetch_errors: [] }),
+      JSON.stringify({ source_url: 'not-a-url', items: [], fetch_errors: [] }),
+    );
+    await fs.writeFile(
+      path.join(dir, 'sources', '2.json'),
+      JSON.stringify({ source_url: 'https://ok.example', items: [], fetch_errors: [] }),
     );
     const r = await salvageFromSources(dir);
     expect(r.salvagedCount).toBe(1);
+    expect(r.skipped).toHaveLength(2);
+    expect(r.skipped.some((s) => s.file === '0.json' && /JSON parse/.test(s.reason))).toBe(true);
+    expect(r.skipped.some((s) => s.file === '1.json' && /schema/.test(s.reason))).toBe(true);
   });
 });

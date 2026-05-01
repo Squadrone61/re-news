@@ -92,7 +92,7 @@ export function validateLengths(p: StageTwo, maxItems: number): void {
 }
 
 export const SourceBriefSchema = z.object({
-  source_url: z.string(),
+  source_url: z.string().url(),
   items: z
     .array(
       z.object({
