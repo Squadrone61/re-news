@@ -1,4 +1,5 @@
 'use client';
+import { summarizeFetchErrors } from '@renews/shared';
 import { marked } from 'marked';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -80,6 +81,11 @@ export function RunDetail({ initial }: { initial: Initial }) {
     }
     return m;
   }, [logs]);
+
+  const fetchErrorSummary = useMemo(
+    () => summarizeFetchErrors(initial.researchRaw),
+    [initial.researchRaw],
+  );
 
   const toast = useToast();
 
@@ -186,6 +192,29 @@ export function RunDetail({ initial }: { initial: Initial }) {
           {busy === 'Re-run full' ? 'Queuing…' : 'Re-run full'}
         </button>
       </section>
+
+      {fetchErrorSummary.total > 0 && (
+        <output
+          style={{
+            display: 'block',
+            marginTop: '1rem',
+            padding: '0.5rem 0.75rem',
+            border: '1px solid #b8860b',
+            background: '#221a05',
+            color: '#e0c060',
+            borderRadius: 3,
+            fontSize: '0.9em',
+          }}
+        >
+          <strong>
+            {fetchErrorSummary.total} fetch error{fetchErrorSummary.total === 1 ? '' : 's'}
+          </strong>
+          {' — '}
+          {Object.entries(fetchErrorSummary.byCode)
+            .map(([code, n]) => `${code} × ${n}`)
+            .join(', ')}
+        </output>
+      )}
 
       <h2 style={h2}>Logs</h2>
       <div style={{ border: '1px solid #333', borderRadius: 3 }}>
