@@ -4,6 +4,7 @@ import { CancelledError, RateLimitError, detectRateLimit } from './pipeline/erro
 import { sendFailureNotice } from './pipeline/failureNotice.js';
 import { runRender } from './pipeline/render.js';
 import { type ResearchJson, runResearch } from './pipeline/research.js';
+import { Stage1IncompleteError } from './pipeline/stage1Outcome.js';
 import { runSummary } from './pipeline/summarize.js';
 import { emptyUsage, persistUsage } from './pipeline/usage.js';
 
@@ -69,7 +70,25 @@ async function execute(runId: string): Promise<void> {
       research = run.researchRaw as unknown as ResearchJson;
       await streamLogToDb(runId, 'sys', 'skipping research (rerun-stage2): reusing researchRaw');
     } else {
-      research = await runResearch(runId, run.job, usage);
+      const outcome = await runResearch(runId, run.job, usage);
+      switch (outcome.kind) {
+        case 'complete':
+          research = outcome.research;
+          break;
+        case 'partial':
+          await streamLogToDb(
+            runId,
+            'sys',
+            `proceeding to stage 2 with partial research (${outcome.salvagedFromSources} source(s) salvaged)`,
+            'warn',
+          );
+          research = outcome.research;
+          break;
+        case 'no_signal':
+          throw new Stage1IncompleteError('stage1_no_signal', outcome.reason);
+        case 'aborted':
+          throw new Stage1IncompleteError('stage1_aborted', outcome.reason);
+      }
     }
     await throwIfCancelled(runId);
 
