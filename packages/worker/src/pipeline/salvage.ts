@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { SourceBriefSchema } from '@renews/shared';
+import { SourceBriefShapeSchema } from '@renews/shared';
 import type { ResearchJson } from './research.js';
 
 export type SalvageResult = {
@@ -39,7 +39,7 @@ export async function salvageFromSources(cwd: string): Promise<SalvageResult> {
       skipped.push({ file: name, reason: `JSON parse: ${errStr(e)}` });
       continue;
     }
-    const brief = SourceBriefSchema.safeParse(parsed);
+    const brief = SourceBriefShapeSchema.safeParse(parsed);
     if (!brief.success) {
       skipped.push({
         file: name,

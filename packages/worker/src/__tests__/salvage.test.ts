@@ -66,4 +66,24 @@ describe('salvageFromSources', () => {
     expect(r.skipped.some((s) => s.file === '0.json' && /JSON parse/.test(s.reason))).toBe(true);
     expect(r.skipped.some((s) => s.file === '1.json' && /schema/.test(s.reason))).toBe(true);
   });
+
+  it('keeps briefs that exceed the strict caps (length warns happen post-salvage)', async () => {
+    const items = Array.from({ length: 20 }, (_, i) => ({
+      title: `T${i}`,
+      url: `https://example.com/${i}`,
+      summary: 'x'.repeat(1500),
+    }));
+    await fs.writeFile(
+      path.join(dir, 'sources', '0.json'),
+      JSON.stringify({
+        source_url: 'https://example.com',
+        items,
+        fetch_errors: [],
+      }),
+    );
+    const r = await salvageFromSources(dir);
+    expect(r.salvagedCount).toBe(1);
+    expect(r.research.items).toHaveLength(20);
+    expect((r.research.items?.[0] as { summary: string }).summary.length).toBe(1500);
+  });
 });

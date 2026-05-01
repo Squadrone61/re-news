@@ -114,6 +114,27 @@ export const SourceBriefSchema = z.object({
 });
 export type SourceBrief = z.infer<typeof SourceBriefSchema>;
 
+/**
+ * Loose runtime shape used during salvage. Same fields as `SourceBriefSchema`
+ * but without the per-item caps (≤15 items, ≤800 char summary, ≤300 char title,
+ * ≤400 char detail). Cap violations are surfaced as warnings downstream by
+ * `validateAndWarnLengths` rather than dropping the whole brief — matching the
+ * main path's warn-and-pass treatment so a non-compliant subagent doesn't
+ * cost us its entire payload.
+ */
+export const SourceBriefShapeSchema = z.object({
+  source_url: z.string().url(),
+  items: z.array(
+    z.object({
+      title: z.string(),
+      url: z.string().url(),
+      summary: z.string(),
+      published_at: z.string().optional(),
+    }),
+  ),
+  fetch_errors: z.array(z.object({ code: z.string(), detail: z.string() })).default([]),
+});
+
 export const SettingsInput = z
   .object({
     gmailUser: z.string().email().nullable().optional(),
