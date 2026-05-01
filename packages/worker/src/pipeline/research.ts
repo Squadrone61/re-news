@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { Job } from '@prisma/client';
-import { prisma, streamLogToDb } from '@renews/shared';
+import { prisma, streamLogToDb, summarizeFetchErrors } from '@renews/shared';
 import { CONDUCTOR_SYSTEM_PROMPT, buildConductorInput } from '../prompts/conductor.js';
 import { RESEARCH_SUBAGENT_SYSTEM_PROMPT } from '../prompts/researchSubagent.js';
 import { CancelledError, RateLimitError, detectRateLimit } from './errors.js';
@@ -209,8 +209,14 @@ async function persist(runId: string, research: ResearchJson): Promise<void> {
     data: { researchRaw: research as object },
   });
   const nItems = research.items?.length ?? 0;
-  const nErrors = research.fetch_errors?.length ?? 0;
-  await streamLogToDb(runId, 'sys', `research_done: ${nItems} items, ${nErrors} fetch_errors`);
+  const summary = summarizeFetchErrors(research);
+  await streamLogToDb(runId, 'sys', `research_done: ${nItems} items, ${summary.total} fetch_errors`);
+  if (summary.total > 0) {
+    const breakdown = Object.entries(summary.byCode)
+      .map(([code, n]) => `${code}×${n}`)
+      .join(', ');
+    await streamLogToDb(runId, 'sys', `fetch_errors breakdown: ${breakdown}`, 'warn');
+  }
 }
 
 async function validateAndWarnLengths(runId: string, parsed: ResearchJson): Promise<ResearchJson> {
