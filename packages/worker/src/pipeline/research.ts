@@ -34,6 +34,32 @@ function resolvePlaywrightMcpCli(): string {
   return cachedPlaywrightMcpCli;
 }
 
+let cachedChromiumPath: string | null = null;
+async function resolvePatchrightChromium(): Promise<string> {
+  if (cachedChromiumPath) return cachedChromiumPath;
+  const root = process.env.PLAYWRIGHT_BROWSERS_PATH ?? '/ms-playwright';
+  const entries = await fs.readdir(root, { withFileTypes: true });
+  const chromiumDir = entries.find((e) => e.isDirectory() && e.name.startsWith('chromium-'));
+  if (!chromiumDir) {
+    throw new Error(`patchright Chromium not found under ${root}`);
+  }
+  // patchright ships chromium under chrome-linux64/, older playwright used chrome-linux/.
+  const candidates = [
+    path.join(root, chromiumDir.name, 'chrome-linux64', 'chrome'),
+    path.join(root, chromiumDir.name, 'chrome-linux', 'chrome'),
+  ];
+  for (const c of candidates) {
+    try {
+      await fs.access(c);
+      cachedChromiumPath = c;
+      return c;
+    } catch {
+      /* try next */
+    }
+  }
+  throw new Error(`Chromium binary not found under ${path.join(root, chromiumDir.name)}`);
+}
+
 function jobHasBrowserSources(job: Job): boolean {
   const raw = job.sources;
   if (!Array.isArray(raw)) return false;
@@ -69,6 +95,7 @@ export async function runResearch(
 
   const mcpServers: Record<string, { command: string; args?: string[] }> = {};
   if (useBrowser) {
+    const chromiumExe = await resolvePatchrightChromium();
     mcpServers.playwright = {
       command: process.execPath,
       args: [
@@ -76,6 +103,7 @@ export async function runResearch(
         '--browser=chromium',
         '--headless',
         '--isolated',
+        `--executable-path=${chromiumExe}`,
         '--output-dir',
         path.join(cwd, 'browser'),
       ],
