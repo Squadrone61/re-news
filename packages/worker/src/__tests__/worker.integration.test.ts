@@ -11,14 +11,23 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 // research.json into the run's cwd before returning.
 type SdkBehavior = {
   messages?: unknown[];
-  researchJson?: unknown | null; // null → write nothing
-  stage2Output?: string; // text emitted by the summary SDK call
+  /** When set, the conductor mock writes this object to research.json before returning. null = write nothing. */
+  researchJson?: unknown | null;
+  /** When set, writes per-source briefs to sources/<idx>.json. */
+  sourcesBriefs?: Array<{ idx: number; brief: unknown }>;
+  stage2Output?: string;
   cancelDuringResearch?: boolean;
+  /** When set, the conductor SDK call throws after writing whatever was configured. */
+  throwAfterWrite?: Error;
 };
 let sdkBehavior: SdkBehavior = {};
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
-  query: ({ options }: { options: { cwd?: string; allowedTools?: string[] } }) => {
+  query: ({
+    options,
+  }: {
+    options: { cwd?: string; allowedTools?: string[]; agents?: unknown };
+  }) => {
     const isSummary = Array.isArray(options.allowedTools) && options.allowedTools.length === 0;
     const cwd = options.cwd;
     async function* gen() {
@@ -37,6 +46,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
         };
         return;
       }
+      // Conductor (or legacy) call.
       for (const m of sdkBehavior.messages ?? []) yield m;
       if (sdkBehavior.cancelDuringResearch) {
         if (cwd) {
@@ -52,14 +62,26 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
         await new Promise((resolve) => setTimeout(resolve, 2500));
         throw new Error('aborted by controller');
       }
-      if (cwd && sdkBehavior.researchJson !== null && sdkBehavior.researchJson !== undefined) {
-        await fs.mkdir(cwd, { recursive: true });
-        await fs.writeFile(
-          path.join(cwd, 'research.json'),
-          JSON.stringify(sdkBehavior.researchJson),
-          'utf8',
-        );
+      if (cwd) {
+        await fs.mkdir(path.join(cwd, 'sources'), { recursive: true });
+        if (sdkBehavior.sourcesBriefs) {
+          for (const { idx, brief } of sdkBehavior.sourcesBriefs) {
+            await fs.writeFile(
+              path.join(cwd, 'sources', `${idx}.json`),
+              JSON.stringify(brief),
+              'utf8',
+            );
+          }
+        }
+        if (sdkBehavior.researchJson !== null && sdkBehavior.researchJson !== undefined) {
+          await fs.writeFile(
+            path.join(cwd, 'research.json'),
+            JSON.stringify(sdkBehavior.researchJson),
+            'utf8',
+          );
+        }
       }
+      if (sdkBehavior.throwAfterWrite) throw sdkBehavior.throwAfterWrite;
     }
     return gen();
   },
@@ -230,10 +252,10 @@ describe('poll.tick (pipeline)', () => {
     expect(logs.some((l) => l.stage === 'research' && /^result: /.test(l.message))).toBe(true);
   });
 
-  it('fails the run when research.json is missing (after retries exhausted)', async () => {
+  it('fails the run with stage1_no_signal when conductor produces nothing (after retries)', async () => {
     const job = await createJob();
     const run = await prisma.run.create({ data: { jobId: job.id, status: 'queued' } });
-    sdkBehavior = { messages: [], researchJson: null };
+    sdkBehavior = { researchJson: null };
 
     // 3 attempts: each throws; clear nextRunAt between attempts so tick picks it up.
     for (let i = 0; i < 3; i++) {
@@ -241,25 +263,26 @@ describe('poll.tick (pipeline)', () => {
       await prisma.run.update({ where: { id: run.id }, data: { nextRunAt: null } });
     }
 
-    const done = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
-    expect(done.status).toBe('failed');
-    expect(done.error).toBe('research.json missing');
-    expect(done.finishedAt).toBeInstanceOf(Date);
+    const final = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
+    expect(final.status).toBe('failed');
+    expect(final?.error).toMatch(/stage1_no_signal/);
+    expect(final.finishedAt).toBeInstanceOf(Date);
   });
 
-  it('truncates items > 25 and content > 800 chars', async () => {
+  it('passes oversized item summaries through unchanged (warn-only, no truncation)', async () => {
     const job = await createJob();
     const run = await prisma.run.create({ data: { jobId: job.id, status: 'queued' } });
-    const longContent = 'x'.repeat(1200);
+    const longSummary = 'x'.repeat(1500);
     sdkBehavior = {
-      messages: [],
       researchJson: {
-        items: Array.from({ length: 40 }, (_, i) => ({
-          source: 's',
-          title: `t${i}`,
-          url: `u${i}`,
-          content: longContent,
-        })),
+        items: [
+          {
+            title: 'A',
+            url: 'https://example.com/a',
+            summary: longSummary,
+            source_url: 'https://example.com',
+          },
+        ],
         fetch_errors: [],
       },
     };
@@ -267,9 +290,9 @@ describe('poll.tick (pipeline)', () => {
     await tick();
 
     const done = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
-    const raw = done.researchRaw as { items: Array<{ content: string }> };
-    expect(raw.items).toHaveLength(25);
-    expect(raw.items[0]!.content.length).toBe(800);
+    expect(done.status).toBe('success');
+    const research = done.researchRaw as { items: Array<{ summary: string }> };
+    expect(research.items[0]!.summary.length).toBe(1500);
   });
 
   it('skipResearch reuses researchRaw and emits no research-stage logs', async () => {
@@ -387,40 +410,77 @@ describe('poll.tick (pipeline)', () => {
     });
     expect(sysLogs.filter((l) => l.message.startsWith('research_done:'))).toHaveLength(1);
   });
-});
 
-describe('truncation warnings', () => {
-  it('emits warn sys log when items > 25 or content > 800', async () => {
+  it('salvages from sources/*.json and proceeds to stage 2 when conductor crashes', async () => {
     const job = await createJob();
     const run = await prisma.run.create({ data: { jobId: job.id, status: 'queued' } });
-    const longContent = 'x'.repeat(1200);
     sdkBehavior = {
-      messages: [],
-      researchJson: {
-        items: Array.from({ length: 30 }, (_, i) => ({
-          source: 's',
-          title: `t${i}`,
-          url: `https://e.co/${i}`,
-          content: longContent,
-        })),
-        fetch_errors: [],
-      },
+      sourcesBriefs: [
+        {
+          idx: 0,
+          brief: {
+            source_url: 'https://example.com',
+            items: [
+              {
+                title: 'Salvaged',
+                url: 'https://example.com/x',
+                summary: 'recovered',
+              },
+            ],
+            fetch_errors: [],
+          },
+        },
+      ],
+      researchJson: null,
+      throwAfterWrite: new Error('Claude Code process exited with code 1'),
+      stage2Output: JSON.stringify({
+        subject: 'OK',
+        intro: '',
+        items: [
+          {
+            headline: 'Salvaged',
+            body: 'recovered',
+            source_url: 'https://example.com/x',
+          },
+        ],
+      }),
     };
 
     await tick();
 
-    const logs = await prisma.runLog.findMany({ where: { runId: run.id } });
-    expect(
-      logs.some(
-        (l) => l.stage === 'sys' && l.level === 'warn' && /truncated items to 25/.test(l.message),
-      ),
-    ).toBe(true);
-    expect(
-      logs.some(
-        (l) =>
-          l.stage === 'sys' && l.level === 'warn' && /truncated content .* to 800/.test(l.message),
-      ),
-    ).toBe(true);
+    const final = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
+    expect(final.status).toBe('success');
+    const logs = await prisma.runLog.findMany({
+      where: { runId: final.id, stage: 'sys' },
+      orderBy: { id: 'asc' },
+    });
+    expect(logs.some((l) => /stage1 salvaged 1 source/.test(l.message))).toBe(true);
+    expect(logs.some((l) => /partial research.*1 source/.test(l.message))).toBe(true);
+  });
+});
+
+describe('truncation warnings', () => {
+  it('emits warn sys log for oversized summaries; drops only when count > 50 (safety belt)', async () => {
+    const job = await createJob();
+    const run = await prisma.run.create({ data: { jobId: job.id, status: 'queued' } });
+    const items = Array.from({ length: 60 }, (_, i) => ({
+      title: `T${i}`,
+      url: `https://example.com/${i}`,
+      summary: 'x'.repeat(900),
+      source_url: 'https://example.com',
+    }));
+    sdkBehavior = { researchJson: { items, fetch_errors: [] } };
+
+    await tick();
+
+    const finalRun = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
+    const logs = await prisma.runLog.findMany({
+      where: { runId: finalRun.id, stage: 'sys', level: 'warn' },
+    });
+    expect(logs.some((l) => /oversized summary/.test(l.message))).toBe(true);
+    expect(logs.some((l) => /safety-belt/.test(l.message))).toBe(true);
+    const research = finalRun.researchRaw as { items: unknown[] };
+    expect(research.items.length).toBe(50);
   });
 });
 
@@ -448,7 +508,7 @@ describe('hardening: generic retry', () => {
   it('retries twice with nextRunAt backoff and then fails', async () => {
     const job = await createJob();
     const run = await prisma.run.create({ data: { jobId: job.id, status: 'queued' } });
-    sdkBehavior = { messages: [], researchJson: null }; // causes "research.json missing"
+    sdkBehavior = { messages: [], researchJson: null }; // causes "stage1_no_signal"
 
     // attempt 1 → throws
     await tick();
@@ -476,7 +536,7 @@ describe('hardening: generic retry', () => {
     await tick();
     r = await prisma.run.findUniqueOrThrow({ where: { id: run.id } });
     expect(r.status).toBe('failed');
-    expect(r.error).toMatch(/research\.json missing/);
+    expect(r.error).toMatch(/stage1_no_signal/);
   });
 });
 
