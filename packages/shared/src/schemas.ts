@@ -91,6 +91,29 @@ export function validateLengths(p: StageTwo, maxItems: number): void {
   // gate, so we don't burn retries on a 60-word body.
 }
 
+export const SourceBriefSchema = z.object({
+  source_url: z.string(),
+  items: z
+    .array(
+      z.object({
+        title: z.string().max(300),
+        url: z.string().url(),
+        summary: z.string().max(800),
+        published_at: z.string().optional(),
+      }),
+    )
+    .max(15),
+  fetch_errors: z
+    .array(
+      z.object({
+        code: z.string(),
+        detail: z.string().max(400),
+      }),
+    )
+    .default([]),
+});
+export type SourceBrief = z.infer<typeof SourceBriefSchema>;
+
 export const SettingsInput = z
   .object({
     gmailUser: z.string().email().nullable().optional(),

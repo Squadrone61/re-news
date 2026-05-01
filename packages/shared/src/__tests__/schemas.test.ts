@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { nextFireAt, validateCron } from '../cron.js';
-import { JobInput, LoginInput, SourceInput, UserCreateInput } from '../schemas.js';
+import { JobInput, LoginInput, SourceBriefSchema, SourceInput, UserCreateInput } from '../schemas.js';
 
 describe('JobInput', () => {
   const base = {
@@ -60,5 +60,50 @@ describe('cron validation', () => {
     const d = nextFireAt('0 8 * * *');
     expect(d).toBeInstanceOf(Date);
     expect(d!.getTime()).toBeGreaterThan(Date.now() - 60_000);
+  });
+});
+
+describe('SourceBriefSchema', () => {
+  it('accepts a minimal valid brief with empty items and empty errors', () => {
+    const r = SourceBriefSchema.safeParse({
+      source_url: 'https://example.com',
+      items: [],
+    });
+    expect(r.success).toBe(true);
+    expect(r.success && r.data.fetch_errors).toEqual([]);
+  });
+
+  it('accepts a brief with up to 15 items and a fetch_errors entry', () => {
+    const r = SourceBriefSchema.safeParse({
+      source_url: 'https://example.com',
+      items: [
+        {
+          title: 'A',
+          url: 'https://example.com/a',
+          summary: 'short summary',
+          published_at: '2026-05-01',
+        },
+      ],
+      fetch_errors: [{ code: 'blocked', detail: 'cloudflare interstitial' }],
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects more than 15 items', () => {
+    const items = Array.from({ length: 16 }, (_, i) => ({
+      title: `T${i}`,
+      url: `https://example.com/${i}`,
+      summary: 's',
+    }));
+    const r = SourceBriefSchema.safeParse({ source_url: 'https://example.com', items });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects summary longer than 800 chars', () => {
+    const r = SourceBriefSchema.safeParse({
+      source_url: 'https://example.com',
+      items: [{ title: 'T', url: 'https://example.com/a', summary: 'x'.repeat(801) }],
+    });
+    expect(r.success).toBe(false);
   });
 });
