@@ -4,13 +4,15 @@ import path from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { Job } from '@prisma/client';
 import { prisma, streamLogToDb } from '@renews/shared';
-import { buildResearchPrompt } from '../prompts/research.js';
+import { CONDUCTOR_SYSTEM_PROMPT, buildConductorInput } from '../prompts/conductor.js';
+import { RESEARCH_SUBAGENT_SYSTEM_PROMPT } from '../prompts/researchSubagent.js';
 import { CancelledError, RateLimitError, detectRateLimit } from './errors.js';
+import { salvageFromSources } from './salvage.js';
+import type { Stage1Outcome } from './stage1Outcome.js';
 import { type UsageTotals, addUsage, emptyUsage, extractUsage } from './usage.js';
 
 const RUNS_ROOT = process.env.RUNS_DIR ?? '/app/data/runs';
-const MAX_ITEMS = 25;
-const MAX_CONTENT_CHARS = 800;
+const MAX_MERGED_ITEMS = 50; // safety belt only — conductor prompt asks for 25
 
 const BROWSER_TOOLS = [
   'mcp__playwright__browser_navigate',
@@ -26,8 +28,6 @@ const BROWSER_TOOLS = [
 let cachedPlaywrightMcpCli: string | null = null;
 function resolvePlaywrightMcpCli(): string {
   if (cachedPlaywrightMcpCli) return cachedPlaywrightMcpCli;
-  // @playwright/mcp's exports map does not expose cli.js directly, but
-  // package.json is always listed. Resolve that and join the CLI file name.
   const req = createRequire(import.meta.url);
   const pkgJsonPath = req.resolve('@playwright/mcp/package.json');
   cachedPlaywrightMcpCli = path.join(path.dirname(pkgJsonPath), 'cli.js');
@@ -50,34 +50,25 @@ export type ResearchJson = {
   fetch_errors?: Array<Record<string, unknown>>;
 };
 
-async function researchFileUsable(p: string): Promise<boolean> {
-  try {
-    const raw = await fs.readFile(p, 'utf8');
-    JSON.parse(raw);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export async function runResearch(
   runId: string,
   job: Job,
   usage: UsageTotals = emptyUsage(),
-): Promise<ResearchJson> {
+): Promise<Stage1Outcome> {
   if (process.env.SIM_RATE_LIMIT === '1') {
     throw new RateLimitError('rate_limit: simulated', new Date(Date.now() + 3600 * 1000));
   }
 
   const cwd = path.join(RUNS_ROOT, runId);
-  await fs.mkdir(cwd, { recursive: true });
-  const researchPath = path.join(cwd, 'research.json');
+  await fs.mkdir(path.join(cwd, 'sources'), { recursive: true });
 
   const useBrowser = jobHasBrowserSources(job);
-  const allowedTools = ['WebFetch', 'WebSearch', 'Bash', 'Read', 'Write', 'Task'];
+  const subagentTools = ['WebFetch', 'WebSearch', 'Bash', 'Read', 'Write'];
+  if (useBrowser) subagentTools.push(...BROWSER_TOOLS);
+  const conductorTools = ['Task', 'WebSearch', 'Read', 'Write'];
+
   const mcpServers: Record<string, { command: string; args?: string[] }> = {};
   if (useBrowser) {
-    allowedTools.push(...BROWSER_TOOLS);
     mcpServers.playwright = {
       command: process.execPath,
       args: [
@@ -100,20 +91,30 @@ export async function runResearch(
         if (r?.cancelRequested) controller.abort();
       })
       .catch(() => {
-        /* transient DB read failure — next tick will retry */
+        /* transient DB read failure — next tick retries */
       });
   }, 1000);
 
+  let sdkErr: unknown = null;
   try {
     for await (const msg of query({
-      prompt: buildResearchPrompt(job, researchPath),
+      prompt: buildConductorInput(job),
       options: {
-        allowedTools,
+        systemPrompt: CONDUCTOR_SYSTEM_PROMPT,
+        allowedTools: conductorTools,
         permissionMode: 'acceptEdits',
         cwd,
-        model: job.modelResearch,
-        maxTurns: 40,
+        model: 'claude-haiku-4-5',
+        maxTurns: 6,
         abortController: controller,
+        agents: {
+          'research-source': {
+            description: 'Fetch ONE source URL and write sources/<index>.json',
+            prompt: RESEARCH_SUBAGENT_SYSTEM_PROMPT,
+            tools: subagentTools,
+            model: 'sonnet',
+          },
+        },
         ...(useBrowser ? { mcpServers } : {}),
       },
     })) {
@@ -121,93 +122,127 @@ export async function runResearch(
       await streamLogToDb(runId, 'research', msg);
     }
   } catch (e) {
-    if (controller.signal.aborted) throw new CancelledError();
-    const rl = detectRateLimit(e);
-    if (rl) throw rl;
-    // Salvage: if research.json was already written and parses, a late SDK
-    // crash (e.g. a stray Read that tripped MaxFileReadTokenExceededError) is
-    // recoverable — the model's useful output is already on disk.
-    if (await researchFileUsable(researchPath)) {
-      const reason = e instanceof Error ? e.message : String(e);
-      await streamLogToDb(
-        runId,
-        'sys',
-        `research sdk error after research.json written, salvaging: ${reason}`,
-        'warn',
-      );
-    } else {
-      throw e;
+    if (controller.signal.aborted) {
+      clearInterval(cancelWatch);
+      throw new CancelledError();
     }
+    const rl = detectRateLimit(e);
+    if (rl) {
+      clearInterval(cancelWatch);
+      throw rl;
+    }
+    sdkErr = e;
+    await streamLogToDb(
+      runId,
+      'sys',
+      `conductor sdk error, attempting salvage: ${errMsg(e)}`,
+      'warn',
+    );
   } finally {
     clearInterval(cancelWatch);
   }
 
-  const cancelledAfterSdk = await prisma.run.findUnique({
+  const cancelled = await prisma.run.findUnique({
     where: { id: runId },
     select: { cancelRequested: true },
   });
-  if (cancelledAfterSdk?.cancelRequested) throw new CancelledError();
+  if (cancelled?.cancelRequested) throw new CancelledError();
 
-  let raw: string;
+  const researchPath = path.join(cwd, 'research.json');
+  let conductorWroteResearch = false;
+  let researchFromConductor: ResearchJson | null = null;
   try {
-    raw = await fs.readFile(researchPath, 'utf8');
+    const raw = await fs.readFile(researchPath, 'utf8');
+    researchFromConductor = JSON.parse(raw) as ResearchJson;
+    conductorWroteResearch = true;
   } catch {
-    throw new Error('research.json missing');
+    /* fall through to salvage */
   }
 
-  let parsed: ResearchJson;
-  try {
-    parsed = JSON.parse(raw) as ResearchJson;
-  } catch {
-    throw new Error('research.json invalid JSON');
+  if (conductorWroteResearch && researchFromConductor) {
+    const cleaned = await validateAndWarnLengths(runId, researchFromConductor);
+    await persist(runId, cleaned);
+    return { kind: 'complete', research: cleaned };
   }
 
-  const truncated = await truncateResearch(runId, parsed);
-
-  await prisma.run.update({
-    where: { id: runId },
-    data: { researchRaw: truncated as object },
-  });
-
-  const nItems = truncated.items?.length ?? 0;
-  const nErrors = truncated.fetch_errors?.length ?? 0;
-  await streamLogToDb(runId, 'sys', `research_done: ${nItems} items, ${nErrors} fetch_errors`);
-
-  return truncated;
-}
-
-async function truncateResearch(runId: string, parsed: ResearchJson): Promise<ResearchJson> {
-  const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
-  if (rawItems.length > MAX_ITEMS) {
+  // Conductor didn't write research.json — salvage from sources/*.json.
+  const sal = await salvageFromSources(cwd);
+  if (sal.salvagedCount > 0) {
+    const cleaned = await validateAndWarnLengths(runId, sal.research);
+    await persist(runId, cleaned);
     await streamLogToDb(
       runId,
       'sys',
-      `truncated items to ${MAX_ITEMS} (prompt cap violated: ${rawItems.length})`,
+      `stage1 salvaged ${sal.salvagedCount} source(s) after conductor crash`,
+      'warn',
+    );
+    return {
+      kind: 'partial',
+      research: cleaned,
+      salvagedFromSources: sal.salvagedCount,
+    };
+  }
+
+  // Nothing on disk. Distinguish "sdk crashed before any source completed"
+  // from "conductor finished but emitted no signal".
+  if (sdkErr) {
+    return { kind: 'aborted', reason: errMsg(sdkErr) };
+  }
+  return { kind: 'no_signal', reason: 'conductor produced no research.json and no sources/*.json' };
+}
+
+async function persist(runId: string, research: ResearchJson): Promise<void> {
+  await prisma.run.update({
+    where: { id: runId },
+    data: { researchRaw: research as object },
+  });
+  const nItems = research.items?.length ?? 0;
+  const nErrors = research.fetch_errors?.length ?? 0;
+  await streamLogToDb(runId, 'sys', `research_done: ${nItems} items, ${nErrors} fetch_errors`);
+}
+
+async function validateAndWarnLengths(
+  runId: string,
+  parsed: ResearchJson,
+): Promise<ResearchJson> {
+  const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
+  const errors = Array.isArray(parsed.fetch_errors) ? parsed.fetch_errors : [];
+  const oversized: Array<{ url: string; len: number }> = [];
+  for (const it of rawItems) {
+    const summary = (it as Record<string, unknown>).summary;
+    if (typeof summary === 'string' && summary.length > 800) {
+      oversized.push({
+        url: typeof it.url === 'string' ? it.url : 'unknown',
+        len: summary.length,
+      });
+    }
+  }
+  for (const v of oversized) {
+    await streamLogToDb(
+      runId,
+      'sys',
+      `oversized summary (${v.len} > 800) for ${v.url} — passed through, not truncated`,
       'warn',
     );
   }
-  const items = rawItems.slice(0, MAX_ITEMS);
-  const capped: Array<Record<string, unknown>> = [];
-  for (const item of items) {
-    const content = item.content;
-    if (typeof content === 'string' && content.length > MAX_CONTENT_CHARS) {
-      const url = typeof item.url === 'string' ? item.url : 'item';
-      await streamLogToDb(
-        runId,
-        'sys',
-        `truncated content for ${url} to ${MAX_CONTENT_CHARS} chars`,
-        'warn',
-      );
-      capped.push({ ...item, content: content.slice(0, MAX_CONTENT_CHARS) });
-    } else {
-      capped.push(item);
-    }
+  let items = rawItems;
+  if (rawItems.length > MAX_MERGED_ITEMS) {
+    await streamLogToDb(
+      runId,
+      'sys',
+      `safety-belt: dropped ${rawItems.length - MAX_MERGED_ITEMS} items above MAX_MERGED_ITEMS=${MAX_MERGED_ITEMS}`,
+      'warn',
+    );
+    items = rawItems.slice(0, MAX_MERGED_ITEMS);
   }
-  const errors = Array.isArray(parsed.fetch_errors) ? parsed.fetch_errors : [];
   return {
     fetched_at:
       typeof parsed.fetched_at === 'string' ? parsed.fetched_at : new Date().toISOString(),
-    items: capped,
+    items,
     fetch_errors: errors,
   };
+}
+
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
