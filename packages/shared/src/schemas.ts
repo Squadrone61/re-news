@@ -1,10 +1,17 @@
 import { z } from 'zod';
 
-export const SourceInput = z.object({
+const SourceUrlInput = z.object({
   url: z.string().url(),
   hint: z.string().max(500).optional(),
   needsBrowser: z.boolean().optional(),
 });
+
+const SourceSearchInput = z.object({
+  search: z.string().min(1).max(500),
+  hint: z.string().max(500).optional(),
+});
+
+export const SourceInput = z.union([SourceUrlInput, SourceSearchInput]);
 export type SourceInput = z.infer<typeof SourceInput>;
 
 export const OutputFormat = z.enum(['markdown', 'html', 'json']);

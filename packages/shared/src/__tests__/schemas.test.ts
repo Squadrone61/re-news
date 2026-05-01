@@ -36,11 +36,48 @@ describe('JobInput', () => {
 });
 
 describe('SourceInput', () => {
-  it('requires url', () => {
-    expect(SourceInput.safeParse({}).success).toBe(false);
+  it('accepts a URL descriptor', () => {
+    const parsed = SourceInput.parse({ url: 'https://example.com/feed' });
+    expect(parsed).toEqual({ url: 'https://example.com/feed' });
   });
-  it('accepts needsBrowser', () => {
-    expect(SourceInput.safeParse({ url: 'https://x.com', needsBrowser: true }).success).toBe(true);
+
+  it('accepts a URL descriptor with hint and needsBrowser', () => {
+    const parsed = SourceInput.parse({
+      url: 'https://example.com/feed',
+      hint: 'cf-protected',
+      needsBrowser: true,
+    });
+    expect(parsed).toEqual({
+      url: 'https://example.com/feed',
+      hint: 'cf-protected',
+      needsBrowser: true,
+    });
+  });
+
+  it('accepts a search descriptor', () => {
+    const parsed = SourceInput.parse({ search: 'rtx 5080 indirim turkiye' });
+    expect(parsed).toEqual({ search: 'rtx 5080 indirim turkiye' });
+  });
+
+  it('accepts a search descriptor with hint', () => {
+    const parsed = SourceInput.parse({ search: 'foo', hint: 'last week' });
+    expect(parsed).toEqual({ search: 'foo', hint: 'last week' });
+  });
+
+  it('rejects an empty object', () => {
+    expect(() => SourceInput.parse({})).toThrow();
+  });
+
+  it('rejects an object that is neither URL nor search', () => {
+    expect(() => SourceInput.parse({ topic: 'nope' })).toThrow();
+  });
+
+  it('rejects a search of empty string', () => {
+    expect(() => SourceInput.parse({ search: '' })).toThrow();
+  });
+
+  it('rejects a malformed URL', () => {
+    expect(() => SourceInput.parse({ url: 'not a url' })).toThrow();
   });
 });
 
