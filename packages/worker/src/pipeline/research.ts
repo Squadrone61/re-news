@@ -103,6 +103,15 @@ export async function runResearch(
         systemPrompt: CONDUCTOR_SYSTEM_PROMPT,
         allowedTools: conductorTools,
         permissionMode: 'acceptEdits',
+        // Worker is unattended; auto-grant every tool we declared. `acceptEdits`
+        // alone covers only Edit/Write — WebFetch and MCP tools (Playwright)
+        // would otherwise prompt for grants no one is there to give and the
+        // subagent's tool call would surface as `permission_denied` instead of
+        // actually fetching. `bypassPermissions` requires trust-dialog
+        // acceptance the headless container can't perform, so we use the
+        // `canUseTool` callback instead — it grants per-tool without touching
+        // session-wide bypass state.
+        canUseTool: async (_toolName, input) => ({ behavior: 'allow', updatedInput: input }),
         cwd,
         model: 'claude-haiku-4-5',
         maxTurns: 6,
