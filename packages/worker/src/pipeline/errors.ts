@@ -58,3 +58,6 @@ export class CancelledError extends Error {
     this.name = 'CancelledError';
   }
 }
+
+export { Stage1IncompleteError } from './stage1Outcome.js';
+export type { Stage1Outcome } from './stage1Outcome.js';
