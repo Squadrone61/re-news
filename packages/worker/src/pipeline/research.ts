@@ -210,7 +210,11 @@ async function persist(runId: string, research: ResearchJson): Promise<void> {
   });
   const nItems = research.items?.length ?? 0;
   const summary = summarizeFetchErrors(research);
-  await streamLogToDb(runId, 'sys', `research_done: ${nItems} items, ${summary.total} fetch_errors`);
+  await streamLogToDb(
+    runId,
+    'sys',
+    `research_done: ${nItems} items, ${summary.total} fetch_errors`,
+  );
   if (summary.total > 0) {
     const breakdown = Object.entries(summary.byCode)
       .map(([code, n]) => `${code}×${n}`)

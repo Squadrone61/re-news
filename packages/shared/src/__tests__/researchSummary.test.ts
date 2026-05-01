@@ -30,12 +30,7 @@ describe('summarizeFetchErrors', () => {
 
   it('skips entries with non-string code', () => {
     const researchRaw = {
-      fetch_errors: [
-        { code: 'blocked' },
-        { detail: 'no code field' },
-        { code: 42 },
-        null,
-      ],
+      fetch_errors: [{ code: 'blocked' }, { detail: 'no code field' }, { code: 42 }, null],
     };
     expect(summarizeFetchErrors(researchRaw)).toEqual({
       total: 1,
