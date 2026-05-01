@@ -4,7 +4,29 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useToast } from './Toaster';
 
-type Source = { url: string; hint?: string; needsBrowser?: boolean };
+type SourceUrl = { kind: 'url'; url: string; hint?: string; needsBrowser?: boolean };
+type SourceSearch = { kind: 'search'; search: string; hint?: string };
+type Source = SourceUrl | SourceSearch;
+
+function hydrateSource(s: unknown): Source {
+  if (s && typeof s === 'object') {
+    const o = s as Record<string, unknown>;
+    if (typeof o.search === 'string') {
+      return {
+        kind: 'search',
+        search: o.search,
+        hint: typeof o.hint === 'string' ? o.hint : undefined,
+      };
+    }
+    return {
+      kind: 'url',
+      url: typeof o.url === 'string' ? o.url : '',
+      hint: typeof o.hint === 'string' ? o.hint : undefined,
+      needsBrowser: o.needsBrowser === true,
+    };
+  }
+  return { kind: 'url', url: '' };
+}
 
 export type JobFormValues = {
   name: string;
@@ -45,21 +67,23 @@ export function JobForm({
   const router = useRouter();
   const toast = useToast();
   const [v, setV] = useState<JobFormValues>(
-    initial ?? {
-      name: '',
-      enabled: true,
-      schedule: '0 8 * * *',
-      sources: [{ url: '' }],
-      topic: '',
-      basePrompt: '',
-      recipientEmail: userEmail,
-      outputFormat: 'markdown',
-      maxItems: 6,
-      modelResearch: defaults?.modelResearch ?? 'claude-sonnet-4-6',
-      modelSummary: defaults?.modelSummary ?? 'claude-haiku-4-5',
-      monthlyBudget: 60,
-      minIntervalMinutes: null,
-    },
+    initial
+      ? { ...initial, sources: initial.sources.map(hydrateSource) }
+      : {
+          name: '',
+          enabled: true,
+          schedule: '0 8 * * *',
+          sources: [{ kind: 'url', url: '' }],
+          topic: '',
+          basePrompt: '',
+          recipientEmail: userEmail,
+          outputFormat: 'markdown',
+          maxItems: 6,
+          modelResearch: defaults?.modelResearch ?? 'claude-sonnet-4-6',
+          modelSummary: defaults?.modelSummary ?? 'claude-haiku-4-5',
+          monthlyBudget: 60,
+          minIntervalMinutes: null,
+        },
   );
   const [err, setErr] = useState<string | null>(null);
   const [fieldErr, setFieldErr] = useState<Record<string, string>>({});
@@ -111,11 +135,19 @@ export function JobForm({
   function setSource(i: number, patch: Partial<Source>) {
     setV((prev) => ({
       ...prev,
-      sources: prev.sources.map((s, idx) => (idx === i ? { ...s, ...patch } : s)),
+      sources: prev.sources.map((s, idx) => {
+        if (idx !== i) return s;
+        if (patch.kind && patch.kind !== s.kind) {
+          return patch.kind === 'url'
+            ? { kind: 'url', url: '', hint: s.hint }
+            : { kind: 'search', search: '', hint: s.hint };
+        }
+        return { ...s, ...patch } as Source;
+      }),
     }));
   }
   function addSource() {
-    setV((prev) => ({ ...prev, sources: [...prev.sources, { url: '' }] }));
+    setV((prev) => ({ ...prev, sources: [...prev.sources, { kind: 'url', url: '' }] }));
   }
   function removeSource(i: number) {
     setV((prev) => ({ ...prev, sources: prev.sources.filter((_, idx) => idx !== i) }));
@@ -127,7 +159,21 @@ export function JobForm({
     setFieldErr({});
     const payload = {
       ...v,
-      sources: v.sources.filter((s) => s.url.trim() !== ''),
+      sources: v.sources
+        .filter((s) => (s.kind === 'url' ? s.url.trim() !== '' : s.search.trim() !== ''))
+        .map((s) => {
+          if (s.kind === 'url') {
+            const out: { url: string; hint?: string; needsBrowser?: boolean } = {
+              url: s.url.trim(),
+            };
+            if (s.hint) out.hint = s.hint;
+            if (s.needsBrowser) out.needsBrowser = true;
+            return out;
+          }
+          const out: { search: string; hint?: string } = { search: s.search.trim() };
+          if (s.hint) out.hint = s.hint;
+          return out;
+        }),
     };
     const url = jobId ? `/api/jobs/${jobId}` : '/api/jobs';
     const method = jobId ? 'PUT' : 'POST';
@@ -300,26 +346,54 @@ export function JobForm({
         {v.sources.map((s, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: transient form rows
           <div key={i} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-            <input
-              style={{ ...inp, flex: 3 }}
-              placeholder="https://…"
-              value={s.url}
-              onChange={(e) => setSource(i, { url: e.target.value })}
-            />
-            <input
-              style={{ ...inp, flex: 2 }}
-              placeholder="hint (optional)"
-              value={s.hint ?? ''}
-              onChange={(e) => setSource(i, { hint: e.target.value })}
-            />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#888' }}>
-              <input
-                type="checkbox"
-                checked={s.needsBrowser ?? false}
-                onChange={(e) => setSource(i, { needsBrowser: e.target.checked })}
-              />
-              browser
-            </label>
+            <select
+              style={{ ...inp, width: 90 }}
+              value={s.kind}
+              onChange={(e) => setSource(i, { kind: e.target.value as 'url' | 'search' })}
+              aria-label="Source type"
+            >
+              <option value="url">URL</option>
+              <option value="search">Search</option>
+            </select>
+            {s.kind === 'url' ? (
+              <>
+                <input
+                  style={{ ...inp, flex: 3 }}
+                  placeholder="https://…"
+                  value={s.url}
+                  onChange={(e) => setSource(i, { url: e.target.value })}
+                />
+                <input
+                  style={{ ...inp, flex: 2 }}
+                  placeholder="hint (optional)"
+                  value={s.hint ?? ''}
+                  onChange={(e) => setSource(i, { hint: e.target.value })}
+                />
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#888' }}>
+                  <input
+                    type="checkbox"
+                    checked={s.needsBrowser ?? false}
+                    onChange={(e) => setSource(i, { needsBrowser: e.target.checked })}
+                  />
+                  browser
+                </label>
+              </>
+            ) : (
+              <>
+                <input
+                  style={{ ...inp, flex: 3 }}
+                  placeholder="search query (Claude WebSearch)"
+                  value={s.search}
+                  onChange={(e) => setSource(i, { search: e.target.value })}
+                />
+                <input
+                  style={{ ...inp, flex: 2 }}
+                  placeholder="hint (optional)"
+                  value={s.hint ?? ''}
+                  onChange={(e) => setSource(i, { hint: e.target.value })}
+                />
+              </>
+            )}
             <button type="button" onClick={() => removeSource(i)} style={btnGhost}>
               ✕
             </button>

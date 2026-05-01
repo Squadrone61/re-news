@@ -7,8 +7,6 @@ import { Topbar } from '../../_components/Topbar';
 
 export const dynamic = 'force-dynamic';
 
-type Source = { url: string; hint?: string; needsBrowser?: boolean };
-
 export default async function EditJobPage({ params }: { params: Promise<{ id: string }> }) {
   const me = await getCurrentUser();
   if (!me) redirect('/login');
@@ -27,7 +25,7 @@ export default async function EditJobPage({ params }: { params: Promise<{ id: st
     name: job.name,
     enabled: job.enabled,
     schedule: job.schedule,
-    sources: (job.sources as unknown as Source[]) ?? [],
+    sources: (job.sources as unknown as JobFormValues['sources']) ?? [],
     topic: job.topic,
     basePrompt: job.basePrompt,
     recipientEmail: job.recipientEmail,
