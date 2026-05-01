@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { nextFireAt, validateCron } from '../cron.js';
-import { JobInput, LoginInput, SourceBriefSchema, SourceInput, UserCreateInput } from '../schemas.js';
+import {
+  JobInput,
+  LoginInput,
+  SourceBriefSchema,
+  SourceInput,
+  UserCreateInput,
+} from '../schemas.js';
 
 describe('JobInput', () => {
   const base = {

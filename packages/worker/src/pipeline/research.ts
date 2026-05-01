@@ -201,10 +201,7 @@ async function persist(runId: string, research: ResearchJson): Promise<void> {
   await streamLogToDb(runId, 'sys', `research_done: ${nItems} items, ${nErrors} fetch_errors`);
 }
 
-async function validateAndWarnLengths(
-  runId: string,
-  parsed: ResearchJson,
-): Promise<ResearchJson> {
+async function validateAndWarnLengths(runId: string, parsed: ResearchJson): Promise<ResearchJson> {
   const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
   const errors = Array.isArray(parsed.fetch_errors) ? parsed.fetch_errors : [];
   const oversized: Array<{ url: string; len: number }> = [];
