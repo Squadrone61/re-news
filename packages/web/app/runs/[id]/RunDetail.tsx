@@ -1,5 +1,5 @@
 'use client';
-import { summarizeFetchErrors } from '@renews/shared';
+import { summarizeFetchErrors } from '@renews/shared/researchSummary';
 import { marked } from 'marked';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';

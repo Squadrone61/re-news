@@ -13,6 +13,10 @@
     "./auth": {
       "types": "./dist/auth.d.ts",
       "import": "./dist/auth.js"
+    },
+    "./researchSummary": {
+      "types": "./dist/researchSummary.d.ts",
+      "import": "./dist/researchSummary.js"
     }
   },
   "scripts": {
