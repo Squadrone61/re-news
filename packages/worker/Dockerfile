@@ -31,17 +31,12 @@ COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages/shared ./packages/shared
 COPY --from=build /app/packages/worker ./packages/worker
-# Install patchright Chromium + system deps for the Playwright MCP server.
-# patchright ships a Chromium fork that strips CDP-level headless-detection
-# signals (Runtime.enable leak, HeadlessChrome marker) — needed because stock
-# headless Chromium hits Cloudflare interstitials on most price-comparison
-# sites. --with-deps pulls the apt packages Chromium needs;
-# PLAYWRIGHT_BROWSERS_PATH keeps the binary out of the user homedir. The
-# resulting binary path is resolved at runtime by
-# pipeline/research.ts#resolvePatchrightChromium and passed to @playwright/mcp
-# via --executable-path.
+# Install Chromium + its system deps for the Playwright MCP server used by
+# research runs with needs_browser sources. --with-deps pulls the apt
+# packages Chromium needs; PLAYWRIGHT_BROWSERS_PATH keeps the binary out of
+# the user homedir.
 RUN PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-    node /app/packages/worker/node_modules/patchright/cli.js install --with-deps chromium \
+    node /app/packages/worker/node_modules/playwright/cli.js install --with-deps chromium \
   && rm -rf /var/lib/apt/lists/*
 COPY packages/worker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

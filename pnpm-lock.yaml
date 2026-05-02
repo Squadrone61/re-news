@@ -131,9 +131,6 @@ importers:
       nodemailer:
         specifier: ^6
         version: 6.10.1
-      patchright:
-        specifier: ^1.59.4
-        version: 1.59.4
       playwright:
         specifier: ^1.59.1
         version: 1.59.1
@@ -1715,16 +1712,6 @@ packages:
 
   parse5@7.3.0:
     resolution: {integrity: sha512-IInvU7fabl34qmi9gY8XOVxhYyMyuH2xUNpb2q8/Y+7552KlejkRvqvD19nMoUW/uQGGbqNpA6Tufu5FL5BZgw==}
-
-  patchright-core@1.59.4:
-    resolution: {integrity: sha512-7/vyX0XK0cpGKlcnUD+Rhjv5o9rrmZQl4v/NI+EUBed+VaU5EORpkOF0Gdi+fP698fLhY0tXwacKBUqKE38jQA==}
-    engines: {node: '>=18'}
-    hasBin: true
-
-  patchright@1.59.4:
-    resolution: {integrity: sha512-RDZ40tBZHZtTAMoUoct/IpMA1wrozPZGU2RFk8NIDEndOEBbLxS0dH2fRLiwsNrgXgjZGA/3krrTlzK+uFGgoQ==}
-    engines: {node: '>=18'}
-    hasBin: true
 
   path-key@3.1.1:
     resolution: {integrity: sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q==}
@@ -3515,14 +3502,6 @@ snapshots:
   parse5@7.3.0:
     dependencies:
       entities: 6.0.1
-
-  patchright-core@1.59.4: {}
-
-  patchright@1.59.4:
-    dependencies:
-      patchright-core: 1.59.4
-    optionalDependencies:
-      fsevents: 2.3.2
 
   path-key@3.1.1: {}
 
