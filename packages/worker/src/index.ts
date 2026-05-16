@@ -9,6 +9,7 @@ import { run as runCleanup } from './cleanup.js';
 import { tick } from './poll.js';
 import { reconcile, stopAll } from './registry.js';
 import { staleRecovery } from './staleRecovery.js';
+import { runTelegramPoll, stopTelegramPoll } from './telegram/poll.js';
 
 const CLAUDE_DIR = '/root/.claude';
 const POLL_MS = 5_000;
@@ -49,6 +50,7 @@ function installSignalHandlers(): void {
     if (pollTimer) clearInterval(pollTimer);
     if (reconcileTimer) clearInterval(reconcileTimer);
     if (accountInfoTimer) clearInterval(accountInfoTimer);
+    stopTelegramPoll();
     if (cleanupTask) {
       try {
         await cleanupTask.stop();
@@ -97,8 +99,12 @@ async function main(): Promise<void> {
     tick().catch((err) => logger.error('poll tick failed:', err));
   }, POLL_MS);
 
+  // Long-poll Telegram in the background. Self-heals if the bot token is
+  // missing or rejected — admin sets it via Settings UI without a restart.
+  runTelegramPoll().catch((err) => logger.error('telegram poll crashed:', err));
+
   logger.info(
-    `worker running (poll=${POLL_MS}ms, reconcile=${RECONCILE_MS}ms, account_info=${ACCOUNT_INFO_MS}ms)`,
+    `worker running (poll=${POLL_MS}ms, reconcile=${RECONCILE_MS}ms, account_info=${ACCOUNT_INFO_MS}ms, telegram=long-poll)`,
   );
 }
 

@@ -1,6 +1,6 @@
 import { prisma } from './index.js';
 
-export type LogStage = 'research' | 'summary' | 'email' | 'sys';
+export type LogStage = 'research' | 'summary' | 'email' | 'telegram' | 'sys';
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 type LogEntry = { message: string; level: LogLevel };

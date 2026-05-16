@@ -39,5 +39,25 @@ export async function preflightJob(job: Job, now: Date = new Date()): Promise<Pr
     };
   }
 
+  // Delivery-channel readiness. Defer (not skip) so the failure is visible in
+  // the runs list — same treatment as monthly-budget. Settings are global, so
+  // we fetch them once here rather than threading through every caller.
+  if (job.deliveryChannel === 'telegram') {
+    const settings = await prisma.setting.findUnique({
+      where: { id: 1 },
+      select: { telegramBotToken: true },
+    });
+    if (!settings?.telegramBotToken) {
+      return { kind: 'defer', reason: 'telegram bot token missing' };
+    }
+    if (!job.telegramChatId) {
+      return { kind: 'defer', reason: 'telegram not linked (chat_id missing)' };
+    }
+  } else {
+    if (!job.recipientEmail) {
+      return { kind: 'defer', reason: 'recipient email missing' };
+    }
+  }
+
   return { kind: 'ok' };
 }

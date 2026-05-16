@@ -32,7 +32,10 @@ export async function GET(_req: Request, { params }: Ctx) {
         id: run.job.id,
         name: run.job.name,
         outputFormat: run.job.outputFormat,
+        deliveryChannel: run.job.deliveryChannel,
         recipientEmail: run.job.recipientEmail,
+        telegramChatId: run.job.telegramChatId,
+        telegramChatTitle: run.job.telegramChatTitle,
       },
     });
   } catch (e) {

@@ -26,7 +26,10 @@ type Initial = {
     id: string;
     name: string;
     outputFormat: 'markdown' | 'html' | 'json';
-    recipientEmail: string;
+    deliveryChannel: 'email' | 'telegram';
+    recipientEmail: string | null;
+    telegramChatId: string | null;
+    telegramChatTitle: string | null;
   };
 };
 
@@ -38,7 +41,7 @@ type LogRow = {
   message: string;
 };
 
-const STAGES = ['research', 'summary', 'email', 'sys'] as const;
+const STAGES = ['research', 'summary', 'email', 'telegram', 'sys'] as const;
 type Stage = (typeof STAGES)[number];
 
 export function RunDetail({ initial }: { initial: Initial }) {
@@ -74,7 +77,13 @@ export function RunDetail({ initial }: { initial: Initial }) {
   }, [initial.id]);
 
   const grouped = useMemo(() => {
-    const m: Record<Stage, LogRow[]> = { research: [], summary: [], email: [], sys: [] };
+    const m: Record<Stage, LogRow[]> = {
+      research: [],
+      summary: [],
+      email: [],
+      telegram: [],
+      sys: [],
+    };
     for (const row of logs) {
       const st = (STAGES as readonly string[]).includes(row.stage) ? (row.stage as Stage) : 'sys';
       m[st].push(row);

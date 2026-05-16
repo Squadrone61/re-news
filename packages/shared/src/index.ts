@@ -21,5 +21,6 @@ export * from './schemas.js';
 export * from './cron.js';
 export * from './logger.js';
 export * from './preflight.js';
+export * from './render-telegram.js';
 export { summarizeFetchErrors } from './researchSummary.js';
 export type { FetchErrorSummary } from './researchSummary.js';

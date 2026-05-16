@@ -35,7 +35,11 @@ export type JobFormValues = {
   sources: Source[];
   topic: string;
   basePrompt: string;
+  deliveryChannel: 'email' | 'telegram';
   recipientEmail: string;
+  telegramChatType: 'dm' | 'group' | null;
+  telegramChatId: string | null;
+  telegramChatTitle: string | null;
   outputFormat: 'markdown' | 'html' | 'json';
   maxItems: number;
   modelResearch: string;
@@ -76,7 +80,11 @@ export function JobForm({
           sources: [{ kind: 'url', url: '' }],
           topic: '',
           basePrompt: '',
+          deliveryChannel: 'email',
           recipientEmail: userEmail,
+          telegramChatType: null,
+          telegramChatId: null,
+          telegramChatTitle: null,
           outputFormat: 'markdown',
           maxItems: 6,
           modelResearch: defaults?.modelResearch ?? 'claude-sonnet-4-6',
@@ -404,8 +412,8 @@ export function JobForm({
         </button>
       </fieldset>
 
-      {/* Row: Topic + Recipient email */}
-      <div style={row('1fr 1fr')}>
+      {/* Row: Topic */}
+      <div style={row('1fr')}>
         <label style={lbl}>
           Topic
           <input
@@ -415,17 +423,62 @@ export function JobForm({
             required
           />
         </label>
-        <label style={lbl}>
-          Recipient email
-          <input
-            style={inp}
-            type="email"
-            value={v.recipientEmail}
-            onChange={(e) => set('recipientEmail', e.target.value)}
-            required
-          />
-        </label>
       </div>
+
+      {/* Delivery section: channel discriminator + per-channel inputs. */}
+      <fieldset style={fs}>
+        <legend>Delivery</legend>
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+          <select
+            style={{ ...inp, width: 120 }}
+            value={v.deliveryChannel}
+            onChange={(e) => {
+              const ch = e.target.value as 'email' | 'telegram';
+              setV((prev) => ({
+                ...prev,
+                deliveryChannel: ch,
+                telegramChatType:
+                  ch === 'telegram' ? (prev.telegramChatType ?? 'dm') : prev.telegramChatType,
+              }));
+            }}
+            aria-label="Delivery channel"
+          >
+            <option value="email">Email</option>
+            <option value="telegram">Telegram</option>
+          </select>
+          {v.deliveryChannel === 'email' ? (
+            <input
+              style={{ ...inp, flex: 1 }}
+              type="email"
+              placeholder="Recipient email"
+              value={v.recipientEmail}
+              onChange={(e) => set('recipientEmail', e.target.value)}
+              required
+            />
+          ) : (
+            <select
+              style={{ ...inp, width: 140 }}
+              value={v.telegramChatType ?? 'dm'}
+              onChange={(e) => set('telegramChatType', e.target.value as 'dm' | 'group')}
+              aria-label="Telegram chat type"
+            >
+              <option value="dm">Direct message</option>
+              <option value="group">Group</option>
+            </select>
+          )}
+        </div>
+        {v.deliveryChannel === 'telegram' && (
+          <TelegramLinkSection
+            jobId={jobId}
+            chatType={v.telegramChatType ?? 'dm'}
+            chatId={v.telegramChatId}
+            chatTitle={v.telegramChatTitle}
+            onLinked={(chatId, chatTitle) =>
+              setV((prev) => ({ ...prev, telegramChatId: chatId, telegramChatTitle: chatTitle }))
+            }
+          />
+        )}
+      </fieldset>
 
       {/* Full-width Base prompt */}
       <label style={lbl}>
@@ -583,6 +636,150 @@ function BasePromptHints() {
         prompt above controls everything else (length, tone, structure).
       </p>
     </details>
+  );
+}
+
+function TelegramLinkSection({
+  jobId,
+  chatType,
+  chatId,
+  chatTitle,
+  onLinked,
+}: {
+  jobId: string | undefined;
+  chatType: 'dm' | 'group';
+  chatId: string | null;
+  chatTitle: string | null;
+  onLinked: (chatId: string, chatTitle: string | null) => void;
+}) {
+  const [link, setLink] = useState<{
+    token: string;
+    deepLink: string | null;
+    expiresAt: string;
+  } | null>(null);
+  const [pending, setPending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: onLinked is a stable setter wrapper from parent; re-running on its identity would restart polling on every parent render
+  useEffect(() => {
+    if (!link || !jobId) return;
+    const expiresMs = new Date(link.expiresAt).getTime();
+    let stopped = false;
+    const tick = async () => {
+      if (stopped) return;
+      if (Date.now() > expiresMs) {
+        setLink(null);
+        setPending(false);
+        setErr('Link expired. Generate a new one.');
+        return;
+      }
+      try {
+        const res = await fetch(`/api/jobs/${jobId}/telegram-status`);
+        if (res.ok) {
+          const body = await res.json();
+          if (body.linked && body.chatId) {
+            onLinked(String(body.chatId), body.chatTitle ?? null);
+            setLink(null);
+            setPending(false);
+            return;
+          }
+        }
+      } catch {
+        // transient; keep polling
+      }
+      setTimeout(tick, 3000);
+    };
+    setTimeout(tick, 3000);
+    return () => {
+      stopped = true;
+    };
+    // We intentionally only re-run when `link` (i.e. the active token) changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [link, jobId]);
+
+  async function generate() {
+    if (!jobId) return;
+    setErr(null);
+    setPending(true);
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/telegram-link`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ kind: chatType }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErr(body.error ?? `link failed (${res.status})`);
+        setPending(false);
+        return;
+      }
+      setLink({
+        token: body.token,
+        deepLink: body.deepLink ?? null,
+        expiresAt: body.expiresAt,
+      });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'link failed');
+      setPending(false);
+    }
+  }
+
+  const linked = !!chatId;
+  return (
+    <div style={{ fontSize: '0.9em' }}>
+      <div style={{ marginBottom: 6 }}>
+        Status:{' '}
+        {linked ? (
+          <span style={{ color: '#9ad' }}>
+            Linked
+            {chatTitle ? ` · ${chatTitle}` : ''} (chat {chatId})
+          </span>
+        ) : (
+          <span style={{ color: '#888' }}>Not linked</span>
+        )}
+      </div>
+      {!jobId ? (
+        <div style={{ color: '#888' }}>Save the job first, then link Telegram.</div>
+      ) : (
+        <>
+          <button type="button" onClick={generate} disabled={pending} style={btnGhost}>
+            {linked ? 'Re-link Telegram' : 'Link Telegram'}
+          </button>
+          {link && chatType === 'dm' && link.deepLink && (
+            <div style={{ marginTop: 8 }}>
+              <a href={link.deepLink} target="_blank" rel="noreferrer" style={{ color: '#7af' }}>
+                Open Telegram and press Start
+              </a>
+              <div style={{ color: '#888', marginTop: 4 }}>
+                Waiting for you to press Start… (expires{' '}
+                {new Date(link.expiresAt).toLocaleTimeString()})
+              </div>
+            </div>
+          )}
+          {link && chatType === 'group' && (
+            <div style={{ marginTop: 8 }}>
+              <div>Add the bot to your Telegram group, then send this command in the group:</div>
+              <code
+                style={{
+                  display: 'inline-block',
+                  marginTop: 4,
+                  padding: '0.3rem 0.5rem',
+                  background: '#0b0c0f',
+                  border: '1px solid #333',
+                  borderRadius: 3,
+                }}
+              >
+                /link {link.token}
+              </code>
+              <div style={{ color: '#888', marginTop: 4 }}>
+                Waiting for the command… (expires {new Date(link.expiresAt).toLocaleTimeString()})
+              </div>
+            </div>
+          )}
+          {err && <div style={{ color: '#e66', marginTop: 6 }}>{err}</div>}
+        </>
+      )}
+    </div>
   );
 }
 

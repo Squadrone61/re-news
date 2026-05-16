@@ -1,5 +1,5 @@
 import { logger, prisma, streamLogToDb } from '@renews/shared';
-import { runEmail } from './pipeline/email.js';
+import { runDelivery } from './pipeline/delivery.js';
 import { CancelledError, RateLimitError, detectRateLimit } from './pipeline/errors.js';
 import { sendFailureNotice } from './pipeline/failureNotice.js';
 import { runRender } from './pipeline/render.js';
@@ -102,7 +102,7 @@ async function execute(runId: string): Promise<void> {
     });
     await throwIfCancelled(runId);
 
-    await runEmail(runId, run.job, stage2, rendered);
+    await runDelivery(runId, run.job, stage2, rendered);
     await persistUsage(runId, usage);
     await prisma.run.update({
       where: { id: runId },

@@ -17,6 +17,8 @@ export async function GET() {
       gmailUser: row.gmailUser ?? '',
       gmailAppPassword: row.gmailAppPassword ? MASK : '',
       senderName: row.senderName ?? '',
+      telegramBotToken: row.telegramBotToken ? MASK : '',
+      telegramBotUsername: row.telegramBotUsername ?? '',
       defaultModelResearch: row.defaultModelResearch,
       defaultModelSummary: row.defaultModelSummary,
       workerConcurrency: row.workerConcurrency,
@@ -47,6 +49,16 @@ export async function PUT(req: Request) {
       d.gmailAppPassword !== MASK
     ) {
       data.gmailAppPassword = d.gmailAppPassword;
+    }
+    // Telegram bot token: same mask-preserve pattern. Clear the cached
+    // username when the token changes so the worker re-fetches it via getMe.
+    if (
+      d.telegramBotToken !== undefined &&
+      d.telegramBotToken !== '' &&
+      d.telegramBotToken !== MASK
+    ) {
+      data.telegramBotToken = d.telegramBotToken;
+      data.telegramBotUsername = null;
     }
 
     await prisma.setting.upsert({

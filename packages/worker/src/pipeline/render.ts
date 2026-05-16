@@ -1,6 +1,8 @@
 import type { Job } from '@prisma/client';
-import type { StageTwo } from '@renews/shared';
+import { type StageTwo, renderTelegramHtml } from '@renews/shared';
 import juice from 'juice';
+
+export { renderTelegramHtml };
 
 // Newspaper-style CSS. All selectors flat so `juice` can inline reliably
 // (Gmail strips <style> blocks before rendering).

@@ -33,6 +33,36 @@ describe('JobInput', () => {
   it('rejects empty topic', () => {
     expect(JobInput.safeParse({ ...base, topic: '' }).success).toBe(false);
   });
+
+  it('defaults deliveryChannel to email', () => {
+    const p = JobInput.parse(base);
+    expect(p.deliveryChannel).toBe('email');
+  });
+
+  it('email channel requires recipientEmail', () => {
+    const { recipientEmail: _, ...withoutEmail } = base;
+    const res = JobInput.safeParse({ ...withoutEmail, deliveryChannel: 'email' });
+    expect(res.success).toBe(false);
+  });
+
+  it('telegram channel accepts missing recipientEmail when chatType set', () => {
+    const { recipientEmail: _, ...withoutEmail } = base;
+    const res = JobInput.safeParse({
+      ...withoutEmail,
+      deliveryChannel: 'telegram',
+      telegramChatType: 'dm',
+    });
+    expect(res.success).toBe(true);
+  });
+
+  it('telegram channel requires telegramChatType', () => {
+    const { recipientEmail: _, ...withoutEmail } = base;
+    const res = JobInput.safeParse({
+      ...withoutEmail,
+      deliveryChannel: 'telegram',
+    });
+    expect(res.success).toBe(false);
+  });
 });
 
 describe('SourceInput', () => {

@@ -6,6 +6,8 @@ type Initial = {
   gmailUser: string;
   gmailAppPasswordSet: boolean;
   senderName: string;
+  telegramBotTokenSet: boolean;
+  telegramBotUsername: string;
   defaultModelResearch: string;
   defaultModelSummary: string;
   workerConcurrency: number;
@@ -29,6 +31,7 @@ export function SettingsForm({ initial }: { initial: Initial }) {
   const [gmailUser, setGmailUser] = useState(initial.gmailUser);
   const [gmailAppPassword, setGmailAppPassword] = useState('');
   const [senderName, setSenderName] = useState(initial.senderName);
+  const [telegramBotToken, setTelegramBotToken] = useState('');
   const [defaultModelResearch, setDMR] = useState(initial.defaultModelResearch);
   const [defaultModelSummary, setDMS] = useState(initial.defaultModelSummary);
   const [workerConcurrency, setWC] = useState(initial.workerConcurrency);
@@ -44,6 +47,7 @@ export function SettingsForm({ initial }: { initial: Initial }) {
       workerConcurrency,
     };
     if (gmailAppPassword.length > 0) body.gmailAppPassword = gmailAppPassword;
+    if (telegramBotToken.length > 0) body.telegramBotToken = telegramBotToken;
     const res = await fetch('/api/settings', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
@@ -56,6 +60,7 @@ export function SettingsForm({ initial }: { initial: Initial }) {
     }
     toast.success('Settings saved');
     setGmailAppPassword('');
+    setTelegramBotToken('');
   }
 
   return (
@@ -93,6 +98,28 @@ export function SettingsForm({ initial }: { initial: Initial }) {
           onChange={(e) => setSenderName(e.target.value)}
           placeholder="re-news"
         />
+      </label>
+      <label style={field}>
+        <span>
+          Telegram bot token{' '}
+          {initial.telegramBotTokenSet && (
+            <em style={{ color: '#888' }}>(set; leave blank to keep)</em>
+          )}
+        </span>
+        <input
+          style={input}
+          type="password"
+          value={telegramBotToken}
+          onChange={(e) => setTelegramBotToken(e.target.value)}
+          placeholder={initial.telegramBotTokenSet ? '***' : '123456789:ABCdefGhIjKlMnOpQrStUvWxYz'}
+        />
+        <small style={{ color: '#888' }}>
+          {initial.telegramBotUsername
+            ? `Bot: @${initial.telegramBotUsername}`
+            : initial.telegramBotTokenSet
+              ? 'Bot username not validated yet — worker re-checks within ~30s.'
+              : 'Create a bot via @BotFather to get a token.'}
+        </small>
       </label>
       <label style={field}>
         <span>Default research model</span>

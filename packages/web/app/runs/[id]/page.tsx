@@ -37,7 +37,10 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
       id: run.job.id,
       name: run.job.name,
       outputFormat: run.job.outputFormat as 'markdown' | 'html' | 'json',
+      deliveryChannel: run.job.deliveryChannel as 'email' | 'telegram',
       recipientEmail: run.job.recipientEmail,
+      telegramChatId: run.job.telegramChatId,
+      telegramChatTitle: run.job.telegramChatTitle,
     },
   };
 

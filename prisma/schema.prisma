@@ -41,7 +41,11 @@ model Job {
   sources            Json      @default("[]")
   topic              String
   basePrompt         String    @map("base_prompt")
-  recipientEmail     String    @map("recipient_email")
+  deliveryChannel    String    @default("email") @map("delivery_channel")
+  recipientEmail     String?   @map("recipient_email")
+  telegramChatId     String?   @map("telegram_chat_id")
+  telegramChatType   String?   @map("telegram_chat_type")
+  telegramChatTitle  String?   @map("telegram_chat_title")
   outputFormat       String    @default("markdown") @map("output_format")
   maxItems           Int       @default(6) @map("max_items")
   modelResearch      String    @default("claude-sonnet-4-6") @map("model_research")
@@ -53,9 +57,23 @@ model Job {
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   runs               Run[]
+  telegramLinkTokens JobLinkToken[]
 
   @@index([userId])
   @@map("jobs")
+}
+
+model JobLinkToken {
+  token     String    @id
+  jobId     String    @map("job_id") @db.Uuid
+  job       Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  kind      String
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([jobId])
+  @@map("job_link_tokens")
 }
 
 model Run {
@@ -104,6 +122,9 @@ model Setting {
   gmailUser             String?  @map("gmail_user")
   gmailAppPassword      String?  @map("gmail_app_password")
   senderName            String?  @map("sender_name")
+  telegramBotToken      String?  @map("telegram_bot_token")
+  telegramBotUsername   String?  @map("telegram_bot_username")
+  telegramUpdateOffset  BigInt   @default(0) @map("telegram_update_offset")
   defaultModelResearch  String   @default("claude-sonnet-4-6") @map("default_model_research")
   defaultModelSummary   String   @default("claude-haiku-4-5") @map("default_model_summary")
   workerConcurrency     Int      @default(1) @map("worker_concurrency")

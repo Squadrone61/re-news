@@ -37,6 +37,8 @@ export default async function SettingsPage() {
             gmailUser: row.gmailUser ?? '',
             gmailAppPasswordSet: !!row.gmailAppPassword,
             senderName: row.senderName ?? '',
+            telegramBotTokenSet: !!row.telegramBotToken,
+            telegramBotUsername: row.telegramBotUsername ?? '',
             defaultModelResearch: row.defaultModelResearch,
             defaultModelSummary: row.defaultModelSummary,
             workerConcurrency: row.workerConcurrency,

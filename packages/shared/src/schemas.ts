@@ -17,26 +17,60 @@ export type SourceInput = z.infer<typeof SourceInput>;
 export const OutputFormat = z.enum(['markdown', 'html', 'json']);
 export type OutputFormat = z.infer<typeof OutputFormat>;
 
-export const JobInput = z.object({
-  name: z.string().min(1).max(200),
-  enabled: z.boolean().default(true),
-  schedule: z.string().min(1).max(100),
-  sources: z.array(SourceInput).default([]),
-  topic: z.string().min(1).max(500),
-  basePrompt: z.string().min(1).max(10_000),
-  recipientEmail: z.string().email(),
-  outputFormat: OutputFormat.default('markdown'),
-  maxItems: z.number().int().min(1).max(25).default(6),
-  modelResearch: z.string().default('claude-sonnet-4-6'),
-  modelSummary: z.string().default('claude-haiku-4-5'),
-  monthlyBudget: z.number().int().min(1).max(100_000).default(60),
-  minIntervalMinutes: z.number().int().min(0).max(100_000).nullable().optional(),
-});
+export const DeliveryChannel = z.enum(['email', 'telegram']);
+export type DeliveryChannel = z.infer<typeof DeliveryChannel>;
+
+export const TelegramChatType = z.enum(['dm', 'group']);
+export type TelegramChatType = z.infer<typeof TelegramChatType>;
+
+// On create, telegram jobs require deliveryChannel + telegramChatType but
+// telegramChatId is filled later by the linking flow — recipient may be null.
+// Email jobs require a valid recipientEmail.
+export const JobInput = z
+  .object({
+    name: z.string().min(1).max(200),
+    enabled: z.boolean().default(true),
+    schedule: z.string().min(1).max(100),
+    sources: z.array(SourceInput).default([]),
+    topic: z.string().min(1).max(500),
+    basePrompt: z.string().min(1).max(10_000),
+    deliveryChannel: DeliveryChannel.default('email'),
+    recipientEmail: z.string().email().nullable().optional(),
+    telegramChatType: TelegramChatType.nullable().optional(),
+    outputFormat: OutputFormat.default('markdown'),
+    maxItems: z.number().int().min(1).max(25).default(6),
+    modelResearch: z.string().default('claude-sonnet-4-6'),
+    modelSummary: z.string().default('claude-haiku-4-5'),
+    monthlyBudget: z.number().int().min(1).max(100_000).default(60),
+    minIntervalMinutes: z.number().int().min(0).max(100_000).nullable().optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.deliveryChannel === 'email') {
+      if (!v.recipientEmail) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['recipientEmail'],
+          message: 'recipientEmail is required when deliveryChannel is "email"',
+        });
+      }
+    } else if (v.deliveryChannel === 'telegram') {
+      if (!v.telegramChatType) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['telegramChatType'],
+          message: 'telegramChatType (dm|group) is required when deliveryChannel is "telegram"',
+        });
+      }
+    }
+  });
 export type JobInput = z.infer<typeof JobInput>;
 
 // Partial update: every field optional, no defaults — missing key = "don't touch".
 // Do NOT reuse `JobInput.partial()`: zod's `.default([])` etc. still fire on missing
 // keys and would silently wipe server-side data. Spell each field out explicitly.
+// Cross-field refinement is intentionally absent here: PUT may flip channel
+// without touching the now-optional recipient fields. Pipeline + preflight
+// enforce "channel-appropriate fields present" at run time instead.
 export const JobUpdate = z.object({
   name: z.string().min(1).max(200).optional(),
   enabled: z.boolean().optional(),
@@ -44,7 +78,9 @@ export const JobUpdate = z.object({
   sources: z.array(SourceInput).optional(),
   topic: z.string().min(1).max(500).optional(),
   basePrompt: z.string().min(1).max(10_000).optional(),
-  recipientEmail: z.string().email().optional(),
+  deliveryChannel: DeliveryChannel.optional(),
+  recipientEmail: z.string().email().nullable().optional(),
+  telegramChatType: TelegramChatType.nullable().optional(),
   outputFormat: OutputFormat.optional(),
   maxItems: z.number().int().min(1).max(25).optional(),
   modelResearch: z.string().optional(),
@@ -147,6 +183,7 @@ export const SettingsInput = z
     gmailUser: z.string().email().nullable().optional(),
     gmailAppPassword: z.string().optional(),
     senderName: z.string().min(1).max(200).nullable().optional(),
+    telegramBotToken: z.string().optional(),
     defaultModelResearch: z.string().min(1).max(100).optional(),
     defaultModelSummary: z.string().min(1).max(100).optional(),
     workerConcurrency: z.number().int().min(1).max(10).optional(),

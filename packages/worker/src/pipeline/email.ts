@@ -12,6 +12,9 @@ export async function runEmail(
   if (!settings?.gmailUser || !settings.gmailAppPassword || !settings.senderName) {
     throw new Error('email settings incomplete (gmail_user/gmail_app_password/sender_name)');
   }
+  if (!job.recipientEmail) {
+    throw new Error('email recipient missing (recipientEmail null)');
+  }
 
   const transport = nodemailer.createTransport({
     service: 'gmail',
